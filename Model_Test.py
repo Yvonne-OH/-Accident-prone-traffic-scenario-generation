@@ -254,6 +254,7 @@ if __name__ == "__main__":
     c=test_dataset.data[0][2][:,np.newaxis,:,:]
     
     num_examples_to_output = 5
+    
     for i, (x, y, neighbor) in enumerate(itertools.islice(test_data, num_examples_to_output)):
         #print(x)
         y_=model(x, neighbor, n_predictions=config.PRED_SAMPLES)
@@ -269,6 +270,8 @@ if __name__ == "__main__":
         plt.legend()
         plt.grid(True)
         plt.show()
+        
+        
             
 
 
