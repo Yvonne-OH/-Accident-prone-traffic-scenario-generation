@@ -1,6 +1,7 @@
 import sys
 sys.argv = ["main.py", "--train","data/nba/rebound/train", "--test", "data/nba/rebound/test", "--ckpt", "log_rebound", "--config", "config/nba_rebound.py"]
-
+sys.argv = ["main.py", "--test","data/nba/rebound/test", "--ckpt", " models/nba/rebound", "--config", "config/nba_rebound.py"]
+#sys.argv = ["main.py", "--test","data/univ/test", "--ckpt", " models/univ", "--config", "config/univ.py"]
 
 import os, sys, time
 import importlib
@@ -276,25 +277,6 @@ if __name__ == "__main__":
         print(" ADE: {:.2f}; FDE: {:.2f} ({})".format(
             ade, fde, "FPC: {}".format(fpc) if fpc > 1 else "w/o FPC", 
         ))
-#%%
-    # 设置要查看的批次数
-    num_batches_to_print = 2
-    
-    # 遍历 DataLoader 并打印数据
-    for batch_idx, batch_data in enumerate(train_data):
-        # 打印标注输入和输出
-        inputs, targets = batch_data['input'], batch_data['target']
-        print(f"Batch {batch_idx + 1} - Inputs: {inputs}, Targets: {targets}")
-    
-        # 检查是否已达到所需批次数
-        if batch_idx + 1 >= num_batches_to_print:
-            break
-
-
-
-
-
-
 
 
 
