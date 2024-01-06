@@ -14,6 +14,7 @@ import os, sys, time
 import importlib
 import torch
 import numpy as np
+import seaborn as sns
 from torch.utils.tensorboard import SummaryWriter
 
 from social_vae import SocialVAE
@@ -86,6 +87,7 @@ def test(model, fpc=1):
                 cand = []
                 for i in range(y_.size(-2)):
                     cand.append(FPC(y_[..., i, :].cpu().numpy(), n_samples=config.PRED_SAMPLES))
+                    print(cand)
                 # n_samples x PRED_HORIZON x N x 2
                 y_ = torch.stack([y_[_,:,i] for i, _ in enumerate(cand)], 2)
             else:
@@ -99,6 +101,8 @@ def test(model, fpc=1):
             FDE.append(fde)
     ADE = torch.cat(ADE)
     FDE = torch.cat(FDE)
+    
+    
     if torch.is_tensor(config.WORLD_SCALE) or config.WORLD_SCALE != 1:
         if not torch.is_tensor(config.WORLD_SCALE):
             config.WORLD_SCALE = torch.as_tensor(config.WORLD_SCALE, device=ADE.device, dtype=ADE.dtype)
@@ -172,7 +176,9 @@ if __name__ == "__main__":
     model.to(settings.device)
     optimizer = torch.optim.Adam(model.parameters(), lr=config.LEARNING_RATE)
     start_epoch = 0
+   
     if settings.ckpt:
+        print("ckpt")
         ckpt = os.path.join(settings.ckpt, "ckpt-last")
         ckpt_best = os.path.join(settings.ckpt, "ckpt-best")
         if os.path.exists(ckpt_best):
@@ -254,22 +260,54 @@ if __name__ == "__main__":
     c=test_dataset.data[0][2][:,np.newaxis,:,:]
     
     num_examples_to_output = 5
+    color_list = ['#F1D77E', '#d76364','#2878B5', '#9AC9DB', '#F8AC8C', '#C82423',
+                  '#FF8884', '#8ECFC9',"#F3D266","#B1CE46","#a1a9d0","#F6CAE5",
+                  '#F1D77E', '#d76364','#2878B5', '#9AC9DB', '#F8AC8C', '#C82423',
+                  '#FF8884', '#8ECFC9',"#F3D266","#B1CE46","#a1a9d0","#F6CAE5",]
     
     for i, (x, y, neighbor) in enumerate(itertools.islice(test_data, num_examples_to_output)):
-        #print(x)
+
         y_=model(x, neighbor, n_predictions=config.PRED_SAMPLES)
-        print("x",y_[:,1,0,0].cpu().detach().numpy())
-        print("y",y_[:,1,0,1].cpu().detach().numpy())
-        print(y_.shape)
-        for i in range(10):
-            #plt.plot(y_[i,:,0,0].cpu().detach().numpy(),y_[i,:,0,1].cpu().detach().numpy(), label=f'Trajectory {i + 1}')
-            plt.scatter(y_[:,i,0,0].cpu().detach().numpy(),y_[:,i,0,1].cpu().detach().numpy())
+
+        Pos_npred=[]
+        
+        print(y.cpu().detach().numpy().shape) 
+        
+        plt.plot(x[:,0,0].cpu().detach().numpy(),x[:,0,1].cpu().detach().numpy(),
+                 color='k',
+                 marker='o', markersize=6, markeredgecolor='black', markerfacecolor='k')
+        
+        
+        plt.plot(y[:,0,0].cpu().detach().numpy(),y[:,0,1].cpu().detach().numpy(),
+                 color='k',
+                 marker='*', markersize=10, markeredgecolor='black', markerfacecolor='g')
+        
+        
+        """
+        for i in range(neighbor.cpu().detach().numpy().shape[2]):
+            plt.plot(neighbor[:,:,i,0].cpu().detach().numpy(),neighbor[:,:,i,1].cpu().detach().numpy(),
+                     color='g',
+                     marker='.')"""
+        
+        
+        for N in range(y_.cpu().detach().numpy().shape[0]):
+            Pos_npred.append([y_[N,:,0,0].cpu().detach().numpy(),y_[N,:,0,1].cpu().detach().numpy()])
+            
+
+            plt.plot(y_[N,:,0,0].cpu().detach().numpy(),y_[N,:,0,1].cpu().detach().numpy(),
+                     color='k',
+                     marker='o', markersize=6, markeredgecolor='black', markerfacecolor=color_list[N])
+            
+            
         plt.title('Trajectory Plot')
         plt.xlabel('X-axis')
         plt.ylabel('Y-axis')
         plt.legend()
         plt.grid(True)
         plt.show()
+        
+
+
         
         
             
