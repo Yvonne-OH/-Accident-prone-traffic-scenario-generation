@@ -317,6 +317,8 @@ if __name__ == "__main__":
                   '#FF8884', '#8ECFC9',"#F3D266","#B1CE46","#a1a9d0","#F6CAE5",]
     
     for i, (x, y, neighbor) in enumerate(itertools.islice(test_data, num_examples_to_output)):
+        
+        #np.savetxt("neighbor.csv", neighbor[0,20,:,:].cpu().detach().numpy(), delimiter=',')
 
         y_=model(x, neighbor, n_predictions=config.PRED_SAMPLES)
 
