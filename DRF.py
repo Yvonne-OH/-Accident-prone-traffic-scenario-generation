@@ -1,78 +1,45 @@
-
 import numpy as np 
 import pandas as pd
 import matplotlib.pyplot as plt
 
-file_path = 'neighbor.csv'  # 请替换为你的 CSV 文件路径
-data = pd.read_csv(file_path)
-data.columns = ['x', 'y','Vx','Vy','Ax','Ay']
+def DRF_strength(x, y, x0, y0, Vx, Vy, ax,ay, kappa, kappa1, kappa2, lambda_val, gamma_val, m_val):
+    """
+    Calculate the strength of an elliptical field at a given point (x, y).
 
+    Parameters:
+    - x (float): X-coordinate.
+    - y (float): Y-coordinate.
+    - x0 (float): X-coordinate of the Ego Vehicle center.
+    - y0 (float): Y-coordinate of the Ego Vehicle center.
+    - Vx (float): X-component of the velocity vector.
+    - Vy (float): Y-component of the velocity vector.
+    - a (float): Parameter defining the ellipse semi-minor axis.
+    
+    - kappa (float): Parameter influencing the field strength.
+    - kappa1 (float): Exponent applied to the velocity term.
+    - kappa2 (float): Parameter related to the ellipse eccentricity.
+    - lambda_val (float): Parameter affecting the field strength.
+    - gamma_val (float): Parameter influencing the field strength.
+    - m_val (float): Parameter affecting the field strength.
+    
 
-plt.figure(figsize=(10, 6))
-
-plt.scatter(data['x'], data['y'], label='Data')
-
-
-
-plt.xlabel('X-axis')
-plt.ylabel('Y-axis')
-
-plt.legend()
-
-plt.show()
-#%%
-# 创建势能场的坐标网格
-x_min, x_max = data['x'].min(), data['x'].max()
-y_min, y_max = data['y'].min(), data['y'].max()
-
-# 将网格扩大10%
-x_min, x_max = x_min - 0.1 * (x_max - x_min), x_max + 0.1 * (x_max - x_min)
-y_min, y_max = y_min - 0.1 * (y_max - y_min), y_max + 0.1 * (y_max - y_min)
-
-# 创建扩大后的坐标网格
-x = np.linspace(x_min, x_max, 100)
-y = np.linspace(y_min, y_max, 100)
-X, Y = np.meshgrid(x, y)
-
-# 定义简单的高斯势能场函数
-def gaussian_potential(x, y, center_x, center_y, sigma):
-    return np.exp(-((x - center_x)**2 + (y - center_y)**2) / (2 * sigma**2))
-
-# 计算势能场的值，假设每个数据点都是一个障碍物
-sigma = 1.0  # 调整高斯函数的标准差
-Z = np.zeros_like(X)
-
-for index, row in data.iterrows():
-    Z += gaussian_potential(X, Y, row['x'], row['y'], sigma)
-
-# 绘制等高线图
-plt.contour(X, Y, Z, levels=20, cmap='viridis')
-
-# 添加标题和标签
-plt.title('Potential Field with Obstacles')
-plt.xlabel('X-axis')
-plt.ylabel('Y-axis')
-plt.grid(True)
-
-# 显示图表
-plt.show()
-#%%
-import numpy as np
-import matplotlib.pyplot as plt
-
-# 定义椭圆场强函数
-def ellipse_field_strength(x, y, x0, y0, Vx, Vy, a, kappa, kappa1, kappa2, lambda_val, gamma_val, m_val, rotation_angle):
+    Returns:
+    - strength (float): Strength of the DRF at the specified point.
+    """
+    
+    rotation_angle=-np.arctan2(Vy, Vx)
+    v = np.sqrt(Vx**2 + Vy**2)
+    a = np.sqrt(ax**2 + ay**2)
+    
     if a == 0:
         a = 0.0001
-    
-    v = np.sqrt(Vx**2 + Vy**2)
     
     # Rotate coordinates (x, y) by the specified angle
     x_rotated = (x - x0) * np.cos(rotation_angle) - (y - y0) * np.sin(rotation_angle)
     y_rotated = (x - x0) * np.sin(rotation_angle) + (y - y0) * np.cos(rotation_angle)
     
     theta = abs(abs(np.arctan2(y_rotated, x_rotated)))
-    print(theta)
+   
     phi1 = (kappa * v)**kappa1
     phi2 = lambda_val * gamma_val * m_val
     
@@ -80,31 +47,56 @@ def ellipse_field_strength(x, y, x0, y0, Vx, Vy, a, kappa, kappa1, kappa2, lambd
     term_y = ((y_rotated) / (((np.cos(theta / 2)**np.abs(a / kappa2)) * kappa2 * phi2 * np.exp(phi1))))**2
     
     strength = np.sqrt(1 / (term_x + term_y))
-    strength = np.where((term_x + term_y) <= 1, strength, np.nan)
+    print(strength)
+    # Clip the strength values to a specified range, replacing values outside the range with 'nan'
+    #strength = np.where(strength <=0 , strength, np.nan)
     return np.clip(strength, None, 2.5)
 
-# 设置参数
-x0, y0 = 0.0, 0.0
-Vx,Vy= 20,20
-a = 3.0  # 请根据实际情况调整
+
+file_path = 'neighbor.csv'  # 请替换为你的 CSV 文件路径
+data = pd.read_csv(file_path)
+data.columns = ['x', 'y','Vx','Vy','ax','ay']
+
+#%%
+# 创建势能场的坐标网格
+x_min, x_max = data['x'].min(), data['x'].max()
+y_min, y_max = data['y'].min(), data['y'].max()
+
+# 将网格扩大10%
+x_min, x_max = x_min - 0.2 * (x_max - x_min), x_max + 0.2 * (x_max - x_min)
+y_min, y_max = y_min - 0.2 * (y_max - y_min), y_max + 0.2 * (y_max - y_min)
+
+# 创建扩大后的坐标网格
+x = np.linspace(x_min, x_max, 100)
+y = np.linspace(y_min, y_max, 100)
+X, Y = np.meshgrid(x, y)
 
 kappa = 1
 kappa1,kappa2 = 0.2, 0.4
 
 lambda_val,gamma_val,m_val=2,0.5,2
 
-rotation_angle = np.pi / 4
-
-# 生成坐标网格
-x = np.linspace(-30, 30, 500)
-y = np.linspace(-30, 30, 500)
-X, Y = np.meshgrid(x, y)
-
-# 计算椭圆场强度值
-field_strength = ellipse_field_strength(X, Y, x0, y0, Vx,Vy, a, kappa,kappa1,kappa2,lambda_val,gamma_val,m_val,rotation_angle)
-
-# 绘制场强度图
+for index, row in data.iterrows():
+    
+    x0=row['x']
+    y0=row['y']
+    Vx=row['Vx']*10
+    Vy=row['Vy']*10
+    ax=row['ax']
+    ay=row['ay']
+    if index==0:  
+        field_strength = DRF_strength(X, Y, x0, y0, Vx,Vy, ax,ay, kappa,kappa1,kappa2,lambda_val,gamma_val,m_val)
+        print(field_strength)
+    else:
+        field_strength += DRF_strength(X, Y, x0, y0, Vx,Vy, ax,ay, kappa,kappa1,kappa2,lambda_val,gamma_val,m_val)
+   
+        print(field_strength)
+        
+field_strength = np.where(field_strength >=1 , field_strength, np.nan)   
+field_strength = np.clip(field_strength, None,5)
+    
 plt.contourf(X, Y, field_strength, levels=100, cmap='viridis')
+    
 plt.colorbar(label='Field Strength')
 plt.title('Elliptical Field Strength')
 plt.xlabel('X-axis')
