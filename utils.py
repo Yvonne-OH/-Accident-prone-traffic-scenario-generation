@@ -7,13 +7,13 @@ def ADE_FDE(y_, y, batch_first=False):
     # average displacement error
     # final displacement error
     # y_, y: S x L x N x 2
-    print("y_shape: ",y_.cpu().numpy().shape,"y shape: ",y.cpu().numpy().shape)
+    #print("y_shape: ",y_.cpu().numpy().shape,"y shape: ",y.cpu().numpy().shape)
     if torch.is_tensor(y):
         err = (y_ - y).norm(dim=-1) #Err=||y_*y||dim=-1
-        print (err.cpu().numpy().shape)
+        #print (err.cpu().numpy().shape)
     else:
         err = np.linalg.norm(np.subtract(y_, y), axis=-1)
-        print (err.shape)
+        #print (err.shape)
     if len(err.shape) == 1:
         fde = err[-1]
         ade = err.mean()

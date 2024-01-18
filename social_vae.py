@@ -323,20 +323,26 @@ class SocialVAE(torch.nn.Module):
         if y.size(0) != self.horizon:
             print("[Warn] Unmatched sequence length in inference and generative model. ({} vs {})".format(y.size(0), self.horizon))
         
-
+        """
+        The encoded representations h and b are obtained by passing 
+        inputs x, neighbor, and y through some encoder (self.enc).     
+        """
         h, b = self.enc(x, neighbor, y=y)
         h = self.rnn_fy_init(h)
-        h = h.view(N, -1, self.rnn_fy.num_layers)
-        h = h.permute(2, 0, 1).contiguous()
+        #Tensor operation used for reshaping the tensor,
+        #unfolding the hidden states of the RNN across time steps
+        h = h.view(N, -1, self.rnn_fy.num_layers) 
+        h = h.permute(2, 0, 1).contiguous() 
 
         P, Q = [], []
         D, Z = [], []
         for t in range(self.horizon):
             p_z = self.p_z(h[-1])
             q_z = self.q_z(h[-1], b[t])
-            z = q_z.rsample()
-            d = self.dec(z, h[-1])
-
+            z = q_z.rsample()      # latent variable
+            d = self.dec(z, h[-1]) # reconstructed output
+            
+            #List to store
             P.append(p_z)
             Q.append(q_z)
             D.append(d)
@@ -349,10 +355,11 @@ class SocialVAE(torch.nn.Module):
         d = torch.stack(D)
         with torch.no_grad():
             y = y - x[-1,...,:2].unsqueeze(0)
-        pred = torch.cumsum(d, 0)
+        pred = torch.cumsum(d, 0) #Returns the cumulative sum of the input elements in the dimension dim
 
         err = (pred - y).square()
-        kl = []
+        kl = [] #KL-divergence
+        
         for p, q, z in zip(P, Q, Z):
             kl.append(q.log_prob(z) - p.log_prob(z))
         kl = torch.stack(kl)
