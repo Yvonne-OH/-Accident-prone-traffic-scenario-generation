@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 from tabulate import tabulate
+from itertools import islice
 
 #%%
 # -*- coding: utf-8 -*-
@@ -133,6 +134,104 @@ def test(model, fpc=1):
     )
     print()
     return ade, fde
+
+
+
+
+def process_data_to_tensors(data, agent_threshold, ob_horizon, future_pre):
+    
+    N=ob_horizon+future_pre+2
+    tensors_list = []
+    num_items_to_process = 10
+    processed_count=0
+
+    grouped_data = data.groupby('case_id')
+    
+
+    for _, group in tqdm(grouped_data, desc="Processing Cases", total=num_items_to_process):
+            df_selected = group[['frame_id', 'track_id', 'x', 'y', 'agent_type']]
+            df_selected.columns = ['frame_ID', 'agent_ID', 'pos_x', 'pos_y', 'agent_type']
+            df_selected = df_selected.sort_values(by='frame_ID')
+            df_selected = df_selected.reset_index(drop=True)
+            df_selected['frame_ID'] = df_selected['frame_ID'].astype(int)
+            df_selected['agent_ID'] = df_selected['agent_ID'].astype(int)
+            df_selected['pos_x'] = df_selected['pos_x'].round(5)
+            df_selected['pos_y'] = df_selected['pos_y'].round(5)
+    
+            agent_ids_frame_1 = df_selected.loc[df_selected['frame_ID'] == 1, 'agent_ID'].unique()
+            agent_ids_max_frame = df_selected.loc[df_selected['frame_ID'] == df_selected['frame_ID'].max(), 'agent_ID'].unique()
+    
+            if set(agent_ids_frame_1).issubset(set(agent_ids_max_frame)):
+                unique_agent_ids = df_selected['agent_ID'].nunique()
+                
+    
+                if unique_agent_ids >= agent_threshold:
+                    windows = [df_selected[df_selected['frame_ID'].isin(range(start_frame, start_frame + ob_horizon + future_pre + 2))]
+                               for start_frame in range(df_selected['frame_ID'].min(), df_selected['frame_ID'].max() - ob_horizon - future_pre + 1)]
+                    #print(windows)
+                    for scene_data in windows:            
+                        Possible_ego_ids = scene_data['agent_ID'].value_counts() == ob_horizon + future_pre + 2
+                        Possible_ego_ids_list = Possible_ego_ids[Possible_ego_ids].index.tolist()
+                        
+                        for Possible_ego in Possible_ego_ids_list:
+                            ego_data=scene_data[scene_data['agent_ID'] == Possible_ego].reset_index(drop=True)
+                            
+                            ego_data['vx'] = ego_data['pos_x'].diff(-1).fillna(0)  # Negative diff for chronological order
+                            ego_data['vy'] = ego_data['pos_y'].diff(-1).fillna(0)
+                            
+                            # Calculate ax and ay (differences in vx and vy)
+                            ego_data['ax'] = ego_data['vx'].diff(-1).fillna(0)
+                            ego_data['ay'] = ego_data['vy'].diff(-1).fillna(0)
+                            
+                            ego_data = ego_data.head(N-2).drop(columns=['agent_ID', 'frame_ID','agent_type'])
+                            
+                            hist_ego= np.array(ego_data.head(ob_horizon)).reshape(ob_horizon, 1, 6)
+                            
+                            ground_truth_ego=np.array(ego_data.reset_index(drop=True).tail(future_pre)[['pos_x', 'pos_y']]).reshape(future_pre, 1, 2)
+                           
+                            neighbor=scene_data[scene_data['agent_ID'] != Possible_ego].reset_index(drop=True)
+                            grouped = neighbor.groupby('agent_ID')
+                            neighbor['vx'] = grouped['pos_x'].diff(-1)  # Fill NaN with 0 for first occurrence
+                            neighbor['vy'] = grouped['pos_y'].diff(-1)
+                            neighbor['ax'] = grouped['vx'].diff(-1)
+                            neighbor['ay'] = grouped['vy'].diff(-1)
+                            
+                            grouped = neighbor.groupby('frame_ID')
+                            grouped_list = list(grouped)
+                            # Remove the last two groups from the list
+                            grouped_list = grouped_list[:-2]
+    
+                            # Find the maximum size of any group
+                            max_size = max(group_.shape[0] for _, group_ in grouped)
+                            
+                            # Pad each group with zeros if needed and convert to numpy array
+                            padded_arrays = []
+                            for _, group__ in grouped_list:
+                                group__ = group__.drop(columns=['agent_ID', 'frame_ID', 'agent_type'])
+                                # Pad with zeros if the group is smaller than the max size
+                                padded = np.pad(group__, ((0, max_size - group__.shape[0]), (0, 0)), mode='constant', constant_values=0)
+                                padded_arrays.append(padded)
+                                
+                            neighbor=np.expand_dims(np.array(padded_arrays), axis=1)
+                            
+                           
+                            neighbor=torch.from_numpy(neighbor).double().to("cuda")
+                            x=torch.from_numpy(hist_ego).double().to("cuda")
+                            y=torch.from_numpy(ground_truth_ego).double().to("cuda")
+                            
+                            tensors_list.append((x, y, neighbor))
+                            
+                            return_list=tensors_list
+                            #print(len(return_list))
+                        #print(len(return_list))
+                    print("```````````````",len(return_list))
+            if _>num_items_to_process:
+                print("Break due to Num Limit")
+                
+                break
+                            
+    return tensors_list
+   
 
 #%%
 
@@ -372,272 +471,76 @@ if __name__ == "__main__":
         plt.show()
  
 #%%
-        # Define the file path
-        agent_threshold = 5
-        Mode_select=["train","val"]
-        current_directory = os.getcwd()
-        
-        for mode in Mode_select:
-            Data_Path=os.path.join(current_directory, "Data", "INTERACTION", "INTERACTION-Dataset-DR-multi-v1_2", mode)
-            files = os.listdir(Data_Path)
-            table_data = [(index + 1, file) for index, file in enumerate(files)]
-            table_headers = ["Index", "File"]
-            print(tabulate(table_data, headers=table_headers, tablefmt="grid"))
-            
-            for file_name in files[0:1]:
-                data = pd.read_csv((os.path.join(Data_Path,file_name)))
-                
-                #print(data.head())
-                print(data.info())
-                grouped_data = data.groupby('case_id')
-                
-                if "train" in file_name:
-                    output_directory = os.path.join(current_directory, "Data","Interation",file_name.rsplit('_', 1)[0],"train")
-                elif "val" in file_name:
-                    output_directory = os.path.join(current_directory, "Data","Interation",file_name.rsplit('_', 1)[0],"val")
-                else:
-                    raise ValueError("Wrong File---Please Check!")
-                
-                grouped_data = data.groupby('case_id')
-                
-                for name, group in tqdm(grouped_data, desc="Processing Cases", total=len(grouped_data)):
-                    df_selected = group[['frame_id', 'track_id', 'x', 'y', 'agent_type']]
-                    df_selected.columns = ['frame_ID', 'agent_ID', 'pos_x', 'pos_y', 'agent_type']
-                
-                    # Sort by 'frame_ID' in ascending order
-                    df_selected = df_selected.sort_values(by='frame_ID')
-                
-                    # Reset the index
-                    df_selected = df_selected.reset_index(drop=True)
-                    # Ensure the data types of 'frame_ID' and 'agent_ID' columns are integers
-                    df_selected['frame_ID'] = df_selected['frame_ID'].astype(int)
-                    df_selected['agent_ID'] = df_selected['agent_ID'].astype(int)
-                
-                    # Round 'pos_x' and 'pos_y' columns to three decimal places
-                    df_selected['pos_x'] = df_selected['pos_x'].round(5)
-                    df_selected['pos_y'] = df_selected['pos_y'].round(5)
-                
-                    # Get unique agent_ID values for frame_id=1 and max frame_id
-                    agent_ids_frame_1 = df_selected.loc[df_selected['frame_ID'] == 1, 'agent_ID'].unique()
-                    agent_ids_max_frame = df_selected.loc[df_selected['frame_ID'] == df_selected['frame_ID'].max(), 'agent_ID'].unique()
-                
-                    # Check if all agent_ID values for frame_id=1 are contained within agent_ID values for max frame_id
-                    if set(agent_ids_frame_1).issubset(set(agent_ids_max_frame)):
-                        # Check the number of unique agent_ID values
-                        unique_agent_ids = df_selected['agent_ID'].nunique()
-                
-                        if unique_agent_ids >= agent_threshold:
-                            df_selected
-                            grouped = df_selected.groupby('frame_ID')
-                            
-                            ob_horizon=8
-                            future_pre=12
-                            N=ob_horizon+future_pre+2
-                            
-                            windows =[df_selected[df_selected['frame_ID'].isin(range(start_frame, start_frame + N))]
-                                           for start_frame in range(df_selected['frame_ID'].min(), df_selected['frame_ID'].max() - N + 2)]
-                            Possible_ego_ids_list=[]
-                            for scene_data in windows:            
-                                Possible_ego_ids = scene_data['agent_ID'].value_counts() == N
-                                Possible_ego_ids_list = Possible_ego_ids[Possible_ego_ids].index.tolist()
-                                for Possible_ego in Possible_ego_ids_list:
-                                    
-                                    ego_data=scene_data[scene_data['agent_ID'] == Possible_ego].reset_index(drop=True)
-                                    
-                                    ego_data['vx'] = ego_data['pos_x'].diff(-1).fillna(0)  # Negative diff for chronological order
-                                    ego_data['vy'] = ego_data['pos_y'].diff(-1).fillna(0)
-                                    
-                                    # Calculate ax and ay (differences in vx and vy)
-                                    ego_data['ax'] = ego_data['vx'].diff(-1).fillna(0)
-                                    ego_data['ay'] = ego_data['vy'].diff(-1).fillna(0)
-                                    
-                                    ego_data = ego_data.head(N-2).drop(columns=['agent_ID', 'frame_ID','agent_type'])
-                                    
-                                    hist_ego= np.array(ego_data.head(ob_horizon)).reshape(ob_horizon, 1, 6)
-                                    
-                                    ground_truth_ego=np.array(ego_data.reset_index(drop=True).tail(future_pre)[['pos_x', 'pos_y']]).reshape(future_pre, 1, 2)
-                                   
-                                    neighbor=scene_data[scene_data['agent_ID'] != Possible_ego].reset_index(drop=True)
-                                    grouped = neighbor.groupby('agent_ID')
-                                    neighbor['vx'] = grouped['pos_x'].diff(-1)  # Fill NaN with 0 for first occurrence
-                                    neighbor['vy'] = grouped['pos_y'].diff(-1)
-                                    neighbor['ax'] = grouped['vx'].diff(-1)
-                                    neighbor['ay'] = grouped['vy'].diff(-1)
-                                    
-                                    grouped = neighbor.groupby('frame_ID')
-                                    grouped_list = list(grouped)
-                                    # Remove the last two groups from the list
-                                    grouped_list = grouped_list[:-2]
-        
-                                    # Find the maximum size of any group
-                                    max_size = max(group.shape[0] for _, group in grouped)
-                                    
-                                    # Pad each group with zeros if needed and convert to numpy array
-                                    padded_arrays = []
-                                    for _, group in grouped_list:
-                                        group = group.drop(columns=['agent_ID', 'frame_ID', 'agent_type'])
-                                        # Pad with zeros if the group is smaller than the max size
-                                        padded = np.pad(group, ((0, max_size - group.shape[0]), (0, 0)), mode='constant', constant_values=0)
-                                        padded_arrays.append(padded)
-                                        
-                                    neighbor=np.expand_dims(np.array(padded_arrays), axis=1)
-                                    
-                                    
-                                    neighbor=torch.from_numpy(neighbor).double().to("cuda")
-                                    x=torch.from_numpy(hist_ego).double().to("cuda")
-                                    model.double()
-                                    y_=model(x, neighbor, n_predictions=config.PRED_SAMPLES)
-                                    print(y_)
-                                    
-                           
-                                
-                                pass
-                            print("X: ",hist_ego.shape,"Y: ",ground_truth_ego.shape,"Neighbour: ",neighbor.shape )
-                            pass
-        
-        
+    # Define the file path
+    agent_threshold = 5
+    ob_horizon = 8
+    future_pre = 12
+    
+    
+    
+    agent_threshold = 5
+    Mode_select=["train","val"]
+    current_directory = os.getcwd()
+    
 
-
-#%%
-
-"""
-agent_threshold = 5
-Mode_select=["train","val"]
-current_directory = os.getcwd()
-
-for mode in Mode_select:
+    mode="train"
     Data_Path=os.path.join(current_directory, "Data", "INTERACTION", "INTERACTION-Dataset-DR-multi-v1_2", mode)
     files = os.listdir(Data_Path)
     table_data = [(index + 1, file) for index, file in enumerate(files)]
     table_headers = ["Index", "File"]
     print(tabulate(table_data, headers=table_headers, tablefmt="grid"))
     
-    for file_name in files:
-        data = pd.read_csv((os.path.join(Data_Path,file_name)))
+    file_name = files[0]
+    data = pd.read_csv((os.path.join(Data_Path,file_name)))
+    
+    #print(data.head())
+    print(data.info())
+    grouped_data = data.groupby('case_id')
+    
+    if "train" in file_name:
+        output_directory = os.path.join(current_directory, "Data","Interation",file_name.rsplit('_', 1)[0],"train")
+    elif "val" in file_name:
+        output_directory = os.path.join(current_directory, "Data","Interation",file_name.rsplit('_', 1)[0],"val")
+    else:
+        raise ValueError("Wrong File---Please Check!")
+    
+    tensor_data=process_data_to_tensors(data, agent_threshold, ob_horizon, future_pre)
+    print(tensor_data)
+#%%
+    color_list = ['#F1D77E', '#d76364','#2878B5', '#9AC9DB', '#F8AC8C', '#C82423',
+                      '#FF8884', '#8ECFC9',"#F3D266","#B1CE46","#a1a9d0","#F6CAE5",
+                      '#F1D77E', '#d76364','#2878B5', '#9AC9DB', '#F8AC8C', '#C82423',
+                      '#FF8884', '#8ECFC9',"#F3D266","#B1CE46","#a1a9d0","#F6CAE5",]
         
-        #print(data.head())
-        print(data.info())
-        
-        grouped_data = data.groupby('case_id')
-        
-        if "train" in file_name:
-            output_directory = os.path.join(current_directory, "Data","Interation",file_name.rsplit('_', 1)[0],"train")
-        elif "val" in file_name:
-            output_directory = os.path.join(current_directory, "Data","Interation",file_name.rsplit('_', 1)[0],"val")
-        else:
-            raise ValueError("Wrong File---Please Check!")
-        
-        
-        # Check if the directory exists
-        if not os.path.exists(output_directory):
-            # If it doesn't exist, create the directory
-            os.makedirs(output_directory)
-        else:
-            # If it exists, delete all files in the directory
-            files_in_output_directory = os.listdir(output_directory)
-            for file_in_directory in files_in_output_directory:
-                file_path = os.path.join(output_directory, file_in_directory)
-                os.remove(file_path)
-        
-        grouped_data = data.groupby('case_id')
-        
-        for name, group in tqdm(grouped_data, desc="Processing Cases", total=len(grouped_data)):
-            df_selected = group[['frame_id', 'track_id', 'x', 'y', 'agent_type']]
-            df_selected.columns = ['frame_ID', 'agent_ID', 'pos_x', 'pos_y', 'agent_type']
-        
-            # Sort by 'frame_ID' in ascending order
-            df_selected = df_selected.sort_values(by='frame_ID')
-        
-            # Reset the index
-            df_selected = df_selected.reset_index(drop=True)
-            # Ensure the data types of 'frame_ID' and 'agent_ID' columns are integers
-            df_selected['frame_ID'] = df_selected['frame_ID'].astype(int)
-            df_selected['agent_ID'] = df_selected['agent_ID'].astype(int)
-        
-            # Round 'pos_x' and 'pos_y' columns to three decimal places
-            df_selected['pos_x'] = df_selected['pos_x'].round(3)
-            df_selected['pos_y'] = df_selected['pos_y'].round(3)
-        
-            # Get unique agent_ID values for frame_id=1 and max frame_id
-            agent_ids_frame_1 = df_selected.loc[df_selected['frame_ID'] == 1, 'agent_ID'].unique()
-            agent_ids_max_frame = df_selected.loc[df_selected['frame_ID'] == df_selected['frame_ID'].max(), 'agent_ID'].unique()
-        
-            # Check if all agent_ID values for frame_id=1 are contained within agent_ID values for max frame_id
-            if set(agent_ids_frame_1).issubset(set(agent_ids_max_frame)):
-                # Check the number of unique agent_ID values
-                unique_agent_ids = df_selected['agent_ID'].nunique()
-        
-                if unique_agent_ids >= agent_threshold:
-                    # Convert each column to strings with left justification
-                    df_str = df_selected.applymap(lambda x: str(x).ljust(15))
-        
-                    # Write the processed data frame to a text file without column names
-                    output_filename = os.path.join(output_directory, f"{file_name[0:-4]}_case_{int(name)}.txt")
-                    with open(output_filename, 'w', newline='') as file:
-                        writer = csv.writer(file, delimiter='\t')
-                        writer.writerows(df_str.values)        
-                else:
-                    pass
-                    #print(f"Skipping case {name} due to fewer than {agent_threshold} unique agent_ID values.")
-            else:
-                pass
-                #print(f"Skipping case {name} due to different agent_ID values for frame_id=1 and max frame_id.")
-"""
+    model.double()
+    x=tensor_data[0][0]
+    y=tensor_data[0][1]
+    neighbor=tensor_data[0][2]
+    
+    y_pred = model(x, neighbor, n_predictions=config.PRED_SAMPLES)
+    Pos_npred = []
 
+    # Drawing the trajectories
+    plt.plot(x[:,0,0].cpu().detach().numpy(),x[:,0,1].cpu().detach().numpy(),
+             color='k', marker='o', markersize=6, markeredgecolor='black', markerfacecolor='k')
+    
+    plt.plot(y[:,0,0].cpu().detach().numpy(),y[:,0,1].cpu().detach().numpy(),
+             color='k', marker='*', markersize=10, markeredgecolor='black', markerfacecolor='g')
 
+    # Loop for predictions
+    for N in range(y_pred.cpu().detach().numpy().shape[0]):
+        Pos_npred.append([y_pred[N,:,0,0].cpu().detach().numpy(),y_pred[N,:,0,1].cpu().detach().numpy()])
+        plt.plot(y_pred[N,:,0,0].cpu().detach().numpy(),y_pred[N,:,0,1].cpu().detach().numpy(),
+                 color=color_list[N], marker='o', markersize=6, markeredgecolor='black', markerfacecolor=color_list[N])
+
+    plt.title('Trajectory Plot')
+    plt.xlabel('X-axis')
+    plt.ylabel('Y-axis')
+    plt.legend()
+    plt.grid(True)
+    plt.show()
 
     
-    
-import os
-import pandas as pd
-from tabulate import tabulate
-import csv
-from tqdm import tqdm
-
-def process_interaction_data(data_directory, modes, agent_threshold):
-    for mode in modes:
-        data_path = os.path.join(data_directory, "INTERACTION", "INTERACTION-Dataset-DR-multi-v1_2", mode)
-        files = os.listdir(data_path)
-        table_data = [(index + 1, file) for index, file in enumerate(files)]
-        table_headers = ["Index", "File"]
-        print(tabulate(table_data, headers=table_headers, tablefmt="grid"))
-
-        for file_name in files:
-            data = pd.read_csv(os.path.join(data_path, file_name))
-            print(data.info())
-            grouped_data = data.groupby('case_id')
-
-            if "train" in file_name:
-                output_directory = os.path.join(data_directory, file_name.rsplit('_', 1)[0], "train")
-            elif "val" in file_name:
-                output_directory = os.path.join(data_directory, file_name.rsplit('_', 1)[0], "val")
-            else:
-                raise ValueError("Wrong File---Please Check!")
-
-            if not os.path.exists(output_directory):
-                os.makedirs(output_directory)
-            else:
-                for file_in_directory in os.listdir(output_directory):
-                    os.remove(os.path.join(output_directory, file_in_directory))
-
-            for name, group in tqdm(grouped_data, desc="Processing Cases", total=len(grouped_data)):
-                # Processing logic here (same as in your original code)
-
-    return
-
-# Example usage
-current_directory = os.getcwd()
-data_directory = os.path.join(current_directory, "Data")
-modes = ["train", "val"]
-agent_threshold = 5
-
-process_interaction_data(data_directory, modes, agent_threshold)
-
-    
-    
-
-
-
 
 
 
