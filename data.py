@@ -201,6 +201,7 @@ class Dataloader(torch.utils.data.Dataset):
         with open(filename, "r") as record:
             data = self.load_traj(record)
         data = self.extend(data, self.frameskip)
+        
         time = np.sort(list(data.keys()))
         if len(time) < horizon+1: return None
         valid_horizon = self.ob_horizon + self.pred_horizon
@@ -211,6 +212,9 @@ class Dataloader(torch.utils.data.Dataset):
         while tid0 < e-horizon:
             tid1 = tid0+horizon
             t0 = time[tid0]
+            
+            #print(data[t0].items())
+            #print("__________________________")
             
             idx = [aid for aid, d in data[t0].items() if not inclusive_groups or any(g in inclusive_groups for g in d[-1])]
             if idx:
@@ -227,7 +231,7 @@ class Dataloader(torch.utils.data.Dataset):
                     idx_all.extend(data[t].keys())
             if len(idx):
                 data_dim = 6
-                neighbor_idx = np.setdiff1d(idx_all, idx)
+                neighbor_idx = np.setdiff1d(idx_all, idx) #to find values in idx_all that are not in idx
                 if len(idx) == 1 and len(neighbor_idx) == 0:
                     agents = np.array([
                         [data[time[tid]][idx[0]][:data_dim]] + [[1e9]*data_dim]

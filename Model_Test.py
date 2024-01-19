@@ -157,15 +157,19 @@ if __name__ == "__main__":
             inclusive = [config.INCLUSIVE_GROUPS for _ in range(len(settings.test))]
         else:
             inclusive = None
+            
+        #settings.test ---> File location
+        
         test_dataset = Dataloader(
             settings.test, **kwargs, inclusive_groups=inclusive,
             batch_size=config.BATCH_SIZE, shuffle=False
         )
+        
         test_data = torch.utils.data.DataLoader(test_dataset, 
             collate_fn=test_dataset.collate_fn,
             batch_sampler=test_dataset.batch_sampler
         )
-        
+             
 
 
     ###############################################################################
@@ -243,7 +247,8 @@ if __name__ == "__main__":
         num_examples_to_output = 5
         for i, (x, y, neighbor) in enumerate(itertools.islice(test_data, num_examples_to_output)):
         #for x, y, neighbor in test_data:
-            #print(x.shape,y.shape,neighbor.shape)
+            print("____________________________")
+            print(x.shape,y.shape,neighbor.shape)
             batch += x.size(1)
             sys.stdout.write("\r\033[K Evaluating...{}/{} ({}) -- time: {}s".format(
                 batch, len(test_dataset), fpc_config, int(time.time()-tic)
