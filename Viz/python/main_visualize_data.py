@@ -1,10 +1,18 @@
 #!/usr/bin/env python
 
+import sys
+import argparse
+
+# 模拟命令行参数
+sys.argv = ["./main_visualize_data.py" ,
+            ".TestScenarioForScripts"]
+
 try:
     import lanelet2
 
     use_lanelet2_lib = True
 except ImportError:
+    print("La")
     import warnings
 
     string = "Could not import lanelet2. It must be built and sourced, " + \
