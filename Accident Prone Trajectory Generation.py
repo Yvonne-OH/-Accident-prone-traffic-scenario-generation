@@ -34,6 +34,15 @@ from social_vae import SocialVAE
 from data import Dataloader
 from utils import ADE_FDE, FPC, seed, get_rng_state, set_rng_state
 
+
+
+color_list = ['#F1D77E', '#d76364','#2878B5', '#9AC9DB', '#F8AC8C', '#C82423',
+                  '#FF8884', '#8ECFC9',"#F3D266","#B1CE46","#a1a9d0","#F6CAE5",
+                  '#F1D77E', '#d76364','#2878B5', '#9AC9DB', '#F8AC8C', '#C82423',
+                  '#FF8884', '#8ECFC9',"#F3D266","#B1CE46","#a1a9d0","#F6CAE5",]
+    
+
+
 import argparse
 parser = argparse.ArgumentParser()
 parser.add_argument("--train", nargs='+', default=[])
@@ -59,86 +68,8 @@ Nn is the number of neighbors, and 6 represents neighbor information.
 """
 
 #%%
-def test(model, fpc=1):
-    sys.stdout.write("\r\033[K Evaluating...{}/{}".format(
-        0, len(test_dataset)
-    ))
-    tic = time.time()
-    model.eval()
-    ADE, FDE = [], []
-    set_rng_state(init_rng_state, settings.device)
-    batch = 0
-    print("FPC:",int(fpc))
-    fpc = int(fpc) if fpc else 1
- 
-    fpc_config = "FPC: {}".format(fpc) if fpc > 1 else "w/o FPC"
 
-    with torch.no_grad():
-        num_examples_to_output = 5
-        for i, (x, y, neighbor) in enumerate(itertools.islice(test_data, num_examples_to_output)):
-        #for x, y, neighbor in test_data:
-            #print(x.shape,y.shape,neighbor.shape)
-            batch += x.size(1)
-            sys.stdout.write("\r\033[K Evaluating...{}/{} ({}) -- time: {}s".format(
-                batch, len(test_dataset), fpc_config, int(time.time()-tic)
-            ))
-            
-            if config.PRED_SAMPLES > 0 and fpc > 1:
-                # disable fpc testing during training
-                y_ = []
-                for _ in range(fpc):
-                    """
-                    generating multiple predictions (y_, config.PRED_SAMPLES) for 
-                    a given input (x) and its associated neighbors (neighbor).
-                    """
-                    y_.append(model(x, neighbor, n_predictions=config.PRED_SAMPLES))
-                    
-                """
-                y_ = torch.cat(y_, 0): Concatenates them along the specified dimension 
-                (dimension 0 ) to create a single tensor y_ that contains all the predictions.   
-                """
-                y_ = torch.cat(y_, 0)
-                
-                """
-                computing FPC (Final Prediction Confidence) for each predicted trajectory
-                """                
-                cand = []
-                for i in range(y_.size(-2)):
-                    cand.append(FPC(y_[..., i, :].cpu().numpy(), n_samples=config.PRED_SAMPLES))
-                    #print(cand)
-                # n_samples x PRED_HORIZON x N x 2
-                y_ = torch.stack([y_[_,:,i] for i, _ in enumerate(cand)], 2)
-            else:
-                # n_samples x PRED_HORIZON x N x 2
-                y_ = model(x, neighbor, n_predictions=config.PRED_SAMPLES)
-            ade, fde = ADE_FDE(y_, y)
-            if config.PRED_SAMPLES > 0:
-                ade = torch.min(ade, dim=0)[0]
-                fde = torch.min(fde, dim=0)[0]
-            ADE.append(ade)
-            FDE.append(fde)
-    ADE = torch.cat(ADE)
-    FDE = torch.cat(FDE)
-    
-    
-    if torch.is_tensor(config.WORLD_SCALE) or config.WORLD_SCALE != 1:
-        if not torch.is_tensor(config.WORLD_SCALE):
-            config.WORLD_SCALE = torch.as_tensor(config.WORLD_SCALE, device=ADE.device, dtype=ADE.dtype)
-        ADE *= config.WORLD_SCALE
-        FDE *= config.WORLD_SCALE
-    ade = ADE.mean()
-    fde = FDE.mean()
-    sys.stdout.write("\r\033[K ADE: {:.4f}; FDE: {:.4f} ({}) -- time: {}s".format(
-        ade, fde, fpc_config, 
-        int(time.time()-tic))
-    )
-    print()
-    return ade, fde
-
-
-
-
-def process_data_to_tensors(data, agent_threshold, ob_horizon, future_pre):
+def process_data_to_tensors(data, agent_threshold, ob_horizon, future_pre,device):
     
     N=ob_horizon+future_pre+2
     tensors_list = []
@@ -215,9 +146,9 @@ def process_data_to_tensors(data, agent_threshold, ob_horizon, future_pre):
                             neighbor=np.expand_dims(np.array(padded_arrays), axis=1)
                             
                            
-                            neighbor=torch.from_numpy(neighbor).double().to("cuda")
-                            x=torch.from_numpy(hist_ego).double().to("cuda")
-                            y=torch.from_numpy(ground_truth_ego).double().to("cuda")
+                            neighbor=torch.from_numpy(neighbor).double().to(device)
+                            x=torch.from_numpy(hist_ego).double().to(device)
+                            y=torch.from_numpy(ground_truth_ego).double().to(device)
                             
                             tensors_list.append((x, y, neighbor))
                             
@@ -232,7 +163,37 @@ def process_data_to_tensors(data, agent_threshold, ob_horizon, future_pre):
                             
     return tensors_list
    
+def plot_trajectory(x,y,y_pred,neighbor, tensor_data, config, color_list):
+    model.double()
+    x = tensor_data[0][0]
+    y = tensor_data[0][1]
+    neighbor = tensor_data[0][2]
 
+    y_pred = model(x, neighbor, n_predictions=config.PRED_SAMPLES)
+    Pos_npred = []
+
+    # Drawing the trajectories
+    plt.figure(figsize=(10, 6))
+    plt.plot(x[:, 0, 0].cpu().detach().numpy(), x[:, 0, 1].cpu().detach().numpy(),
+             color='k', marker='o', markersize=6, markeredgecolor='black', markerfacecolor='k', label='Historical Trajectory')
+
+    plt.plot(y[:, 0, 0].cpu().detach().numpy(), y[:, 0, 1].cpu().detach().numpy(),
+             color='k', marker='*', markersize=10, markeredgecolor='black', markerfacecolor='g', label='Ground Truth')
+
+    # Loop for predictions
+    for N in range(y_pred.cpu().detach().numpy().shape[0]):
+        Pos_npred.append([y_pred[N, :, 0, 0].cpu().detach().numpy(), y_pred[N, :, 0, 1].cpu().detach().numpy()])
+        plt.plot(y_pred[N, :, 0, 0].cpu().detach().numpy(), y_pred[N, :, 0, 1].cpu().detach().numpy(),
+                 color=color_list[N], marker='o', markersize=6, markeredgecolor='black', markerfacecolor=color_list[N], label=f'Prediction {N+1}')
+
+    plt.title('Trajectory Plot')
+    plt.xlabel('X-axis')
+    plt.ylabel('Y-axis')
+    plt.legend()
+    plt.grid(True)
+    plt.show()
+
+    return Pos_npred
 #%%
 
 if __name__ == "__main__":
@@ -243,6 +204,7 @@ if __name__ == "__main__":
 
     if settings.device is None:
         settings.device = "cuda" if torch.cuda.is_available() else "cpu"
+        settings.device = "cpu"
     settings.device = torch.device(settings.device)
     
     seed(settings.seed)
@@ -315,169 +277,16 @@ if __name__ == "__main__":
             start_epoch = state_dict["epoch"]
      
     #end_epoch = start_epoch+1 if train_data is None or start_epoch >= config.EPOCHS else config.EPOCHS
-
-    for epoch in range(0,5):
-        
-        losses = None
-        logger = True
-        
-        ###############################################################################
-        #####                                                                    ######
-        ##### test                                                               ######
-        #####                                                                    ######
-        ###############################################################################
-        ade, fde = 10000, 10000
-        perform_test = (train_data is None or epoch >= config.TEST_SINCE) and test_data is not None
-        if perform_test:
-            if not settings.no_fpc and not settings.fpc_finetune and losses is None and fpc_best > 1:
-                fpc = fpc_best
-            else:
-                fpc = 1
-            ade, fde = test(model, fpc)
-            
-
-    sys.stdout.write("\r\033[K Evaluating...{}/{}".format(
-        0, len(test_dataset)
-    ))
-    tic = time.time()
+    #ade, fde = test(model, fpc)
     model.eval()
-    ADE, FDE = [], []
-    set_rng_state(init_rng_state, settings.device)
-    batch = 0
-    fpc = int(fpc) if fpc else 1
-    fpc_config = "FPC: {}".format(fpc) if fpc > 1 else "w/o FPC"
-
-    with torch.no_grad():
-        
-        num_examples_to_output = 5
-        for i, (x, y, neighbor) in enumerate(itertools.islice(test_data, num_examples_to_output)):
-        #for x, y, neighbor in test_data:
-            print("____________________________")
-            print(x.shape,y.shape,neighbor.shape)
-            batch += x.size(1)
-            sys.stdout.write("\r\033[K Evaluating...{}/{} ({}) -- time: {}s".format(
-                batch, len(test_dataset), fpc_config, int(time.time()-tic)
-            ))
-            
-            if config.PRED_SAMPLES > 0 and fpc > 1:
-                # disable fpc testing during training
-                y_ = []
-                for _ in range(fpc):
-                    """
-                    generating multiple predictions (y_, config.PRED_SAMPLES) for 
-                    a given input (x) and its associated neighbors (neighbor).
-                    """
-                    y_.append(model(x, neighbor, n_predictions=config.PRED_SAMPLES))
-                    
-                """
-                y_ = torch.cat(y_, 0): Concatenates them along the specified dimension 
-                (dimension 0 ) to create a single tensor y_ that contains all the predictions.   
-                """
-                y_ = torch.cat(y_, 0) #FPC*n_predictions
-                
-                """
-                computing FPC (Final Prediction Confidence) for each predicted trajectory
-                """                
-                cand = []
-                for i in range(y_.size(-2)):
-                    #
-                    cand.append(FPC(y_[..., i, :].cpu().numpy(), n_samples=config.PRED_SAMPLES))
-                    #print(cand)
-                    
-                # n_samples x PRED_HORIZON x N x 2
-                y_ = torch.stack([y_[_,:,i] for i, _ in enumerate(cand)], 2)
-            else:
-                # n_samples x PRED_HORIZON x N x 2
-                y_ = model(x, neighbor, n_predictions=config.PRED_SAMPLES)
-            
-            ade, fde = ADE_FDE(y_, y)
-            if config.PRED_SAMPLES > 0:
-                ade = torch.min(ade, dim=0)[0]
-                fde = torch.min(fde, dim=0)[0]
-            ADE.append(ade)
-            FDE.append(fde)
-    ADE = torch.cat(ADE)
-    FDE = torch.cat(FDE)
-    
-    
-    if torch.is_tensor(config.WORLD_SCALE) or config.WORLD_SCALE != 1:
-        if not torch.is_tensor(config.WORLD_SCALE):
-            config.WORLD_SCALE = torch.as_tensor(config.WORLD_SCALE, device=ADE.device, dtype=ADE.dtype)
-        ADE *= config.WORLD_SCALE
-        FDE *= config.WORLD_SCALE
-    ade = ADE.mean()
-    fde = FDE.mean()
-    sys.stdout.write("\r\033[K ADE: {:.4f}; FDE: {:.4f} ({}) -- time: {}s".format(
-        ade, fde, fpc_config, 
-        int(time.time()-tic))
-    )
-    print()
-    
-    
-    
-    print('Dataset size:', len(test_dataset))
-
-    a=test_dataset.data[0][0][:,np.newaxis,:]
-    b=test_dataset.data[0][1][:,np.newaxis,:]
-    c=test_dataset.data[0][2][:,np.newaxis,:,:]
-    
-    num_examples_to_output = 10
-    color_list = ['#F1D77E', '#d76364','#2878B5', '#9AC9DB', '#F8AC8C', '#C82423',
-                  '#FF8884', '#8ECFC9',"#F3D266","#B1CE46","#a1a9d0","#F6CAE5",
-                  '#F1D77E', '#d76364','#2878B5', '#9AC9DB', '#F8AC8C', '#C82423',
-                  '#FF8884', '#8ECFC9',"#F3D266","#B1CE46","#a1a9d0","#F6CAE5",]
-    
-    for i, (x, y, neighbor) in enumerate(itertools.islice(test_data, num_examples_to_output)):
-        
-        #np.savetxt("neighbor.csv", neighbor[0,20,:,:].cpu().detach().numpy(), delimiter=',')
-
-        y_=model(x, neighbor, n_predictions=config.PRED_SAMPLES)
-
-        Pos_npred=[]
-        
-        print(y.cpu().detach().numpy().shape) 
-        
-        plt.plot(x[:,0,0].cpu().detach().numpy(),x[:,0,1].cpu().detach().numpy(),
-                 color='k',
-                 marker='o', markersize=6, markeredgecolor='black', markerfacecolor='k')
-        
-        
-        plt.plot(y[:,0,0].cpu().detach().numpy(),y[:,0,1].cpu().detach().numpy(),
-                 color='k',
-                 marker='*', markersize=10, markeredgecolor='black', markerfacecolor='g')
-        
-        
-        """
-        for i in range(neighbor.cpu().detach().numpy().shape[2]):
-            plt.plot(neighbor[:,:,i,0].cpu().detach().numpy(),neighbor[:,:,i,1].cpu().detach().numpy(),
-                     color='g',
-                     marker='.')"""
-        
-        
-        for N in range(y_.cpu().detach().numpy().shape[0]):
-            Pos_npred.append([y_[N,:,0,0].cpu().detach().numpy(),y_[N,:,0,1].cpu().detach().numpy()])
-            
-
-            plt.plot(y_[N,:,0,0].cpu().detach().numpy(),y_[N,:,0,1].cpu().detach().numpy(),
-                     color='k',
-                     marker='o', markersize=6, markeredgecolor='black', markerfacecolor=color_list[N])
-            
-            
-        plt.title('Trajectory Plot')
-        plt.xlabel('X-axis')
-        plt.ylabel('Y-axis')
-        plt.legend()
-        plt.grid(True)
-        plt.show()
- 
+   
+   
 #%%
     # Define the file path
     agent_threshold = 5
-    ob_horizon = 8
-    future_pre = 12
-    
-    
-    
+    ob_horizon = 10
+    future_pre = 25
+       
     agent_threshold = 5
     Mode_select=["train","val"]
     current_directory = os.getcwd()
@@ -490,7 +299,7 @@ if __name__ == "__main__":
     table_headers = ["Index", "File"]
     print(tabulate(table_data, headers=table_headers, tablefmt="grid"))
     
-    file_name = files[0]
+    file_name = files[10]
     data = pd.read_csv((os.path.join(Data_Path,file_name)))
     
     #print(data.head())
@@ -504,13 +313,10 @@ if __name__ == "__main__":
     else:
         raise ValueError("Wrong File---Please Check!")
     
-    tensor_data=process_data_to_tensors(data, agent_threshold, ob_horizon, future_pre)
-    print(tensor_data)
+    tensor_data=process_data_to_tensors(data, agent_threshold, ob_horizon, future_pre,settings.device)
+    #print(tensor_data)
 #%%
-    color_list = ['#F1D77E', '#d76364','#2878B5', '#9AC9DB', '#F8AC8C', '#C82423',
-                      '#FF8884', '#8ECFC9',"#F3D266","#B1CE46","#a1a9d0","#F6CAE5",
-                      '#F1D77E', '#d76364','#2878B5', '#9AC9DB', '#F8AC8C', '#C82423',
-                      '#FF8884', '#8ECFC9',"#F3D266","#B1CE46","#a1a9d0","#F6CAE5",]
+
         
     model.double()
     x=tensor_data[0][0]
@@ -518,27 +324,93 @@ if __name__ == "__main__":
     neighbor=tensor_data[0][2]
     
     y_pred = model(x, neighbor, n_predictions=config.PRED_SAMPLES)
-    Pos_npred = []
 
-    # Drawing the trajectories
-    plt.plot(x[:,0,0].cpu().detach().numpy(),x[:,0,1].cpu().detach().numpy(),
-             color='k', marker='o', markersize=6, markeredgecolor='black', markerfacecolor='k')
+
+    plot_trajectory(x,y,y_pred,neighbor, tensor_data, config, color_list)
+
+#%%
+
+
+
+
+    model.double()
+    num=12
+    x=tensor_data[num][0]
+    y=tensor_data[num][1]
+    neighbor=tensor_data[num][2]
     
-    plt.plot(y[:,0,0].cpu().detach().numpy(),y[:,0,1].cpu().detach().numpy(),
-             color='k', marker='*', markersize=10, markeredgecolor='black', markerfacecolor='g')
+    y_pred = model(x, neighbor, n_predictions=config.PRED_SAMPLES)
+    Pos_npred = []
+    
+    mode="Scenario_Pred"
+    
+    if mode=="Ego_Pred":
+        # Drawing the trajectories
+        plt.plot(x[:,0,0].cpu().detach().numpy(),x[:,0,1].cpu().detach().numpy(),
+                 color='k', marker='o', markersize=6, markeredgecolor='black', markerfacecolor='k')
+        
+        plt.plot(y[:,0,0].cpu().detach().numpy(),y[:,0,1].cpu().detach().numpy(),
+                 color='k', marker='*', markersize=10, markeredgecolor='black', markerfacecolor='g')
+    
+        # Loop for predictions
+        for N in range(y_pred.cpu().detach().numpy().shape[0]):
+            Pos_npred.append([y_pred[N,:,0,0].cpu().detach().numpy(),y_pred[N,:,0,1].cpu().detach().numpy()])
+            plt.plot(y_pred[N,:,0,0].cpu().detach().numpy(),y_pred[N,:,0,1].cpu().detach().numpy(),
+                     color=color_list[N], marker='o', markersize=6, markeredgecolor='black', markerfacecolor=color_list[N])
+    
+        plt.title('Trajectory Plot')
+        plt.xlabel('X-axis')
+        plt.ylabel('Y-axis')
+        plt.legend()
+        plt.grid(True)
+        plt.show()
+        
+        
+    if mode=="Scenario_Pred":
+        # Drawing the trajectories
+        
+        plt.plot(x[:,0,0].cpu().detach().numpy(),x[:,0,1].cpu().detach().numpy(),
+                 color='k', marker='o', markersize=6, markeredgecolor='black', markerfacecolor='k')
+        
+        plt.plot(y[:,0,0].cpu().detach().numpy(),y[:,0,1].cpu().detach().numpy(),
+                 color='k', marker='*', markersize=1, markeredgecolor='black', markerfacecolor='g')
+        
+    
+        # Loop for predictions
+        for N in range(y_pred.cpu().detach().numpy().shape[0]):
+            Pos_npred.append([y_pred[N,:,0,0].cpu().detach().numpy(),y_pred[N,:,0,1].cpu().detach().numpy()])
+            plt.plot(y_pred[N,:,0,0].cpu().detach().numpy(),y_pred[N,:,0,1].cpu().detach().numpy(),
+                     color=color_list[N], marker='o', markersize=1, markeredgecolor='black', markerfacecolor=color_list[N])
+            
+        neighbor_array= neighbor.cpu().detach().numpy().squeeze() 
+      
+        for i in range(neighbor_array.shape[1]):
+            slice = neighbor_array[:, i, :]
+            slice = slice[~(slice == 0).all(axis=1)]
+            plt.scatter(slice[:,0],slice[:,1],color='b')
+           
 
-    # Loop for predictions
-    for N in range(y_pred.cpu().detach().numpy().shape[0]):
-        Pos_npred.append([y_pred[N,:,0,0].cpu().detach().numpy(),y_pred[N,:,0,1].cpu().detach().numpy()])
-        plt.plot(y_pred[N,:,0,0].cpu().detach().numpy(),y_pred[N,:,0,1].cpu().detach().numpy(),
-                 color=color_list[N], marker='o', markersize=6, markeredgecolor='black', markerfacecolor=color_list[N])
+            #print(f"Slice {i}:\n", slice)
+        
+        x_data = x[:, 0, 0].cpu().detach().numpy()
+        y_data = x[:, 0, 1].cpu().detach().numpy()
+        """
+        x_range = (np.min(x_data) - 80 * (np.max(x_data) - np.min(x_data)), 
+                   np.max(x_data) + 80 * (np.max(x_data) - np.min(x_data)))
+        y_range = (np.min(y_data) - 80 * (np.max(y_data) - np.min(y_data)), 
+                   np.max(y_data) + 80 * (np.max(y_data) - np.min(y_data)))
+        
+        plt.xlim(x_range)
+        plt.ylim(y_range)
+        """
 
-    plt.title('Trajectory Plot')
-    plt.xlabel('X-axis')
-    plt.ylabel('Y-axis')
-    plt.legend()
-    plt.grid(True)
-    plt.show()
+        
+        plt.title('Trajectory Plot')
+        plt.xlabel('X-axis')
+        plt.ylabel('Y-axis')
+        plt.legend()
+        plt.grid(True)
+        plt.show()
 
     
 
