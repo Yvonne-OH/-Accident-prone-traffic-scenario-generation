@@ -36,13 +36,6 @@ from utils import ADE_FDE, FPC, seed, get_rng_state, set_rng_state
 
 
 
-color_list = ['#F1D77E', '#d76364','#2878B5', '#9AC9DB', '#F8AC8C', '#C82423',
-                  '#FF8884', '#8ECFC9',"#F3D266","#B1CE46","#a1a9d0","#F6CAE5",
-                  '#F1D77E', '#d76364','#2878B5', '#9AC9DB', '#F8AC8C', '#C82423',
-                  '#FF8884', '#8ECFC9',"#F3D266","#B1CE46","#a1a9d0","#F6CAE5",]
-    
-
-
 import argparse
 parser = argparse.ArgumentParser()
 parser.add_argument("--train", nargs='+', default=[])
@@ -114,10 +107,8 @@ def process_data_to_tensors(data, agent_threshold, ob_horizon, future_pre,device
                             ego_data['ax'] = ego_data['vx'].diff(-1).fillna(0)
                             ego_data['ay'] = ego_data['vy'].diff(-1).fillna(0)
                             
-                            ego_data = ego_data.head(N-2).drop(columns=['agent_ID', 'frame_ID','agent_type'])
-                            
-                            hist_ego= np.array(ego_data.head(ob_horizon)).reshape(ob_horizon, 1, 6)
-                            
+                            ego_data = ego_data.head(N-2).drop(columns=['agent_ID', 'frame_ID','agent_type'])         
+                            hist_ego= np.array(ego_data.head(ob_horizon)).reshape(ob_horizon, 1, 6)                      
                             ground_truth_ego=np.array(ego_data.reset_index(drop=True).tail(future_pre)[['pos_x', 'pos_y']]).reshape(future_pre, 1, 2)
                            
                             neighbor=scene_data[scene_data['agent_ID'] != Possible_ego].reset_index(drop=True)
@@ -127,10 +118,14 @@ def process_data_to_tensors(data, agent_threshold, ob_horizon, future_pre,device
                             neighbor['ax'] = grouped['vx'].diff(-1)
                             neighbor['ay'] = grouped['vy'].diff(-1)
                             
+                            neighbor =neighbor.sort_values(by="agent_ID").groupby('agent_ID').filter(lambda x: len(x) >= N)
+                            a=neighbor
+                                             
                             grouped = neighbor.groupby('frame_ID')
                             grouped_list = list(grouped)
                             # Remove the last two groups from the list
                             grouped_list = grouped_list[:-2]
+                            
     
                             # Find the maximum size of any group
                             max_size = max(group_.shape[0] for _, group_ in grouped)
@@ -138,6 +133,7 @@ def process_data_to_tensors(data, agent_threshold, ob_horizon, future_pre,device
                             # Pad each group with zeros if needed and convert to numpy array
                             padded_arrays = []
                             for _, group__ in grouped_list:
+                                
                                 group__ = group__.drop(columns=['agent_ID', 'frame_ID', 'agent_type'])
                                 # Pad with zeros if the group is smaller than the max size
                                 padded = np.pad(group__, ((0, max_size - group__.shape[0]), (0, 0)), mode='constant', constant_values=0)
@@ -159,39 +155,158 @@ def process_data_to_tensors(data, agent_threshold, ob_horizon, future_pre,device
             if _>num_items_to_process:
                 print("Break due to Num Limit")
                 
-                break
-                            
-    return tensors_list
+                break                        
+    return tensors_list,grouped_list
+#%%
+def Vehicle_Viz(ax, centers,angles,width, height,style="r-"):
+    """
+
+    :param ax: Matplotlib axis object.
+    :param center: The coordinates (x, y) of the center of the vehicle.
+    :param width: The width of the vehicle.
+    :param height: The height of the vehicle.
+    :param angle: Heading angle.
+    """
    
-def plot_trajectory(x,y,y_pred,neighbor, tensor_data, config, color_list):
-    model.double()
-    x = tensor_data[0][0]
-    y = tensor_data[0][1]
-    neighbor = tensor_data[0][2]
+    for center, angle in zip(centers, angles):
+            # Calculate the half width and half height
+            half_width = width / 2
+            half_height = height / 2
+    
+            # Define the four corners of the rectangle based on the center, width, and height
+            rectangle = np.array([
+                [center[0] - half_width, center[1] - half_height],
+                [center[0] + half_width, center[1] - half_height],
+                [center[0] + half_width, center[1] + half_height],
+                [center[0] - half_width, center[1] + half_height],
+                [center[0] - half_width, center[1] - half_height]
+            ])
+    
+            # Convert angle to radians
+            theta = np.radians(angle)
+    
+            # Create rotation matrix
+            rotation_matrix = np.array([[np.cos(theta), -np.sin(theta)], [np.sin(theta), np.cos(theta)]])
+    
+            # Rotate each corner of the rectangle around the center
+            rotated_rectangle = np.dot(rectangle - center, rotation_matrix) + center
+    
+            # Draw the rotated rectangle
+            ax.plot(rotated_rectangle[:, 0], rotated_rectangle[:, 1], style)
 
-    y_pred = model(x, neighbor, n_predictions=config.PRED_SAMPLES)
-    Pos_npred = []
+def calculate_headings(x, y):
+    """
+    Calculate the bearing angles between consecutive points and extend the last bearing.
 
-    # Drawing the trajectories
-    plt.figure(figsize=(10, 6))
-    plt.plot(x[:, 0, 0].cpu().detach().numpy(), x[:, 0, 1].cpu().detach().numpy(),
-             color='k', marker='o', markersize=6, markeredgecolor='black', markerfacecolor='k', label='Historical Trajectory')
+    :param x: Array of x-coordinates.
+    :param y: Array of y-coordinates.
+    :return: Array of heading angles with the same length as x and y.
+    """
+    # Calculate the differences between consecutive points
+    dx = np.diff(x)
+    dy = np.diff(y)
 
-    plt.plot(y[:, 0, 0].cpu().detach().numpy(), y[:, 0, 1].cpu().detach().numpy(),
-             color='k', marker='*', markersize=10, markeredgecolor='black', markerfacecolor='g', label='Ground Truth')
+    # Calculate the bearing angles
+    headings = np.arctan2(dy, dx)
 
-    # Loop for predictions
-    for N in range(y_pred.cpu().detach().numpy().shape[0]):
-        Pos_npred.append([y_pred[N, :, 0, 0].cpu().detach().numpy(), y_pred[N, :, 0, 1].cpu().detach().numpy()])
-        plt.plot(y_pred[N, :, 0, 0].cpu().detach().numpy(), y_pred[N, :, 0, 1].cpu().detach().numpy(),
-                 color=color_list[N], marker='o', markersize=6, markeredgecolor='black', markerfacecolor=color_list[N], label=f'Prediction {N+1}')
+    # Convert headings from radians to degrees
+    headings = -np.degrees(headings)
 
-    plt.title('Trajectory Plot')
-    plt.xlabel('X-axis')
-    plt.ylabel('Y-axis')
-    plt.legend()
-    plt.grid(True)
-    plt.show()
+    # Extend the last bearing
+    headings = np.append(headings, headings[-1])
+
+    return headings
+
+def plot_trajectory(x,y,y_pred,neighbor,mode,EN_vehicle=True,Length=4,Width=1.8,Style='b--'):
+    
+    
+    color_list = ['#F1D77E', '#d76364','#2878B5', '#9AC9DB', '#F8AC8C', '#C82423',
+                      '#FF8884', '#8ECFC9',"#F3D266","#B1CE46","#a1a9d0","#F6CAE5",
+                      '#F1D77E', '#d76364','#2878B5', '#9AC9DB', '#F8AC8C', '#C82423',
+                      '#FF8884', '#8ECFC9',"#F3D266","#B1CE46","#a1a9d0","#F6CAE5",]
+        
+    
+    fig, ax = plt.subplots()
+    
+        
+    if mode=="Ego_Pred":
+        # Drawing the trajectories
+        plt.plot(x[:,0,0].cpu().detach().numpy(),x[:,0,1].cpu().detach().numpy(),
+                 color='k', marker='o', markersize=6, markeredgecolor='black', markerfacecolor='k')
+        
+        plt.plot(y[:,0,0].cpu().detach().numpy(),y[:,0,1].cpu().detach().numpy(),
+                 color='k', marker='*', markersize=10, markeredgecolor='black', markerfacecolor='g')
+        
+        if EN_vehicle:      
+            headings=calculate_headings(x[:,0,0].cpu().detach().numpy(),x[:,0,1].cpu().detach().numpy())          
+            Vehicle_Viz(ax, list(zip(x[:,0,0].cpu().detach().numpy(),x[:,0,1].cpu().detach().numpy())),headings,Length,Width,Style)
+        
+        # Loop for predictions
+        for N in range(y_pred.cpu().detach().numpy().shape[0]):
+            Pos_npred.append([y_pred[N,:,0,0].cpu().detach().numpy(),y_pred[N,:,0,1].cpu().detach().numpy()])
+            plt.plot(y_pred[N,:,0,0].cpu().detach().numpy(),y_pred[N,:,0,1].cpu().detach().numpy(),
+                     color=color_list[N], marker='o', markersize=6, markeredgecolor='black', markerfacecolor=color_list[N])
+    
+        plt.title('Trajectory Plot')
+        plt.xlabel('X-axis')
+        plt.ylabel('Y-axis')
+        plt.legend()
+        plt.grid(True)
+        plt.show()
+        
+        
+    if mode=="Scenario_Pred":
+        # Drawing the trajectories
+        
+        plt.plot(x[:,0,0].cpu().detach().numpy(),x[:,0,1].cpu().detach().numpy(),
+                 color='k', marker='o', markersize=6, markeredgecolor='black', markerfacecolor='k')
+        
+        plt.plot(y[:,0,0].cpu().detach().numpy(),y[:,0,1].cpu().detach().numpy(),
+                 color='k', marker='*', markersize=1, markeredgecolor='black', markerfacecolor='g')
+        
+        if EN_vehicle:      
+            headings=calculate_headings(x[:,0,0].cpu().detach().numpy(),x[:,0,1].cpu().detach().numpy())          
+            Vehicle_Viz(ax, list(zip(x[:,0,0].cpu().detach().numpy(),x[:,0,1].cpu().detach().numpy())),headings,Length,Width,Style)
+    
+        # Loop for predictions
+        for N in range(y_pred.cpu().detach().numpy().shape[0]):
+            Pos_npred.append([y_pred[N,:,0,0].cpu().detach().numpy(),y_pred[N,:,0,1].cpu().detach().numpy()])
+            plt.plot(y_pred[N,:,0,0].cpu().detach().numpy(),y_pred[N,:,0,1].cpu().detach().numpy(),
+                     color=color_list[N], marker='o', markersize=1, markeredgecolor='black', markerfacecolor=color_list[N])
+            
+        neighbor_array= neighbor.cpu().detach().numpy().squeeze() 
+      
+        for i in range(neighbor_array.shape[1]):
+            slice = neighbor_array[:, i, :]
+            print(neighbor_array.shape[1])
+            slice = slice[~(slice == 0).all(axis=1)]
+            plt.plot(slice[:,0],slice[:,1], alpha=0.5)
+            
+            headings=calculate_headings(slice[:,0],slice[:,1])          
+            Vehicle_Viz(ax, list(zip(slice[:,0],slice[:,1])),headings,Length,Width,Style)
+           
+    
+            #print(f"Slice {i}:\n", slice)
+        
+        x_data = x[:, 0, 0].cpu().detach().numpy()
+        y_data = x[:, 0, 1].cpu().detach().numpy()
+        """
+        x_range = (np.min(x_data) - 80 * (np.max(x_data) - np.min(x_data)), 
+                   np.max(x_data) + 80 * (np.max(x_data) - np.min(x_data)))
+        y_range = (np.min(y_data) - 80 * (np.max(y_data) - np.min(y_data)), 
+                   np.max(y_data) + 80 * (np.max(y_data) - np.min(y_data)))
+        
+        plt.xlim(x_range)
+        plt.ylim(y_range)
+        """
+    
+        
+        plt.title('Trajectory Plot')
+        plt.xlabel('X-axis')
+        plt.ylabel('Y-axis')
+        plt.legend()
+        plt.grid(True)
+        plt.show()
 
     return Pos_npred
 #%%
@@ -222,7 +337,7 @@ if __name__ == "__main__":
             device=settings.device, seed=settings.seed)
     train_data, test_data = None, None
     if settings.test:
-        print(settings.test)
+        #print(settings.test)
         if config.INCLUSIVE_GROUPS is not None:
             inclusive = [config.INCLUSIVE_GROUPS for _ in range(len(settings.test))]
         else:
@@ -313,25 +428,11 @@ if __name__ == "__main__":
     else:
         raise ValueError("Wrong File---Please Check!")
     
-    tensor_data=process_data_to_tensors(data, agent_threshold, ob_horizon, future_pre,settings.device)
+    tensor_data,a=process_data_to_tensors(data, agent_threshold, ob_horizon, future_pre,settings.device)
     #print(tensor_data)
-#%%
 
-        
-    model.double()
-    x=tensor_data[0][0]
-    y=tensor_data[0][1]
-    neighbor=tensor_data[0][2]
-    
-    y_pred = model(x, neighbor, n_predictions=config.PRED_SAMPLES)
-
-
-    plot_trajectory(x,y,y_pred,neighbor, tensor_data, config, color_list)
 
 #%%
-
-
-
 
     model.double()
     num=12
@@ -344,76 +445,8 @@ if __name__ == "__main__":
     
     mode="Scenario_Pred"
     
-    if mode=="Ego_Pred":
-        # Drawing the trajectories
-        plt.plot(x[:,0,0].cpu().detach().numpy(),x[:,0,1].cpu().detach().numpy(),
-                 color='k', marker='o', markersize=6, markeredgecolor='black', markerfacecolor='k')
-        
-        plt.plot(y[:,0,0].cpu().detach().numpy(),y[:,0,1].cpu().detach().numpy(),
-                 color='k', marker='*', markersize=10, markeredgecolor='black', markerfacecolor='g')
-    
-        # Loop for predictions
-        for N in range(y_pred.cpu().detach().numpy().shape[0]):
-            Pos_npred.append([y_pred[N,:,0,0].cpu().detach().numpy(),y_pred[N,:,0,1].cpu().detach().numpy()])
-            plt.plot(y_pred[N,:,0,0].cpu().detach().numpy(),y_pred[N,:,0,1].cpu().detach().numpy(),
-                     color=color_list[N], marker='o', markersize=6, markeredgecolor='black', markerfacecolor=color_list[N])
-    
-        plt.title('Trajectory Plot')
-        plt.xlabel('X-axis')
-        plt.ylabel('Y-axis')
-        plt.legend()
-        plt.grid(True)
-        plt.show()
-        
-        
-    if mode=="Scenario_Pred":
-        # Drawing the trajectories
-        
-        plt.plot(x[:,0,0].cpu().detach().numpy(),x[:,0,1].cpu().detach().numpy(),
-                 color='k', marker='o', markersize=6, markeredgecolor='black', markerfacecolor='k')
-        
-        plt.plot(y[:,0,0].cpu().detach().numpy(),y[:,0,1].cpu().detach().numpy(),
-                 color='k', marker='*', markersize=1, markeredgecolor='black', markerfacecolor='g')
-        
-    
-        # Loop for predictions
-        for N in range(y_pred.cpu().detach().numpy().shape[0]):
-            Pos_npred.append([y_pred[N,:,0,0].cpu().detach().numpy(),y_pred[N,:,0,1].cpu().detach().numpy()])
-            plt.plot(y_pred[N,:,0,0].cpu().detach().numpy(),y_pred[N,:,0,1].cpu().detach().numpy(),
-                     color=color_list[N], marker='o', markersize=1, markeredgecolor='black', markerfacecolor=color_list[N])
-            
-        neighbor_array= neighbor.cpu().detach().numpy().squeeze() 
-      
-        for i in range(neighbor_array.shape[1]):
-            slice = neighbor_array[:, i, :]
-            slice = slice[~(slice == 0).all(axis=1)]
-            plt.scatter(slice[:,0],slice[:,1],color='b')
-           
 
-            #print(f"Slice {i}:\n", slice)
-        
-        x_data = x[:, 0, 0].cpu().detach().numpy()
-        y_data = x[:, 0, 1].cpu().detach().numpy()
-        """
-        x_range = (np.min(x_data) - 80 * (np.max(x_data) - np.min(x_data)), 
-                   np.max(x_data) + 80 * (np.max(x_data) - np.min(x_data)))
-        y_range = (np.min(y_data) - 80 * (np.max(y_data) - np.min(y_data)), 
-                   np.max(y_data) + 80 * (np.max(y_data) - np.min(y_data)))
-        
-        plt.xlim(x_range)
-        plt.ylim(y_range)
-        """
-
-        
-        plt.title('Trajectory Plot')
-        plt.xlabel('X-axis')
-        plt.ylabel('Y-axis')
-        plt.legend()
-        plt.grid(True)
-        plt.show()
-
-    
-
+    plot_trajectory(x,y,y_pred,neighbor,mode)
 
 
 
