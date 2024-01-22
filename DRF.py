@@ -80,8 +80,8 @@ for index, row in data.iterrows():
     
     x0=row['x']
     y0=row['y']
-    Vx=row['Vx']*10
-    Vy=row['Vy']*10
+    Vx=row['Vx']*1
+    Vy=row['Vy']*1
     ax=row['ax']
     ay=row['ay']
     if index==0:  

@@ -1,5 +1,6 @@
 import os
 import csv
+import DRF
 import torch
 import numpy as np
 import pandas as pd
@@ -278,7 +279,6 @@ def plot_trajectory(x,y,y_pred,neighbor,mode,EN_vehicle=True,Length=4,Width=1.8,
       
         for i in range(neighbor_array.shape[1]):
             slice = neighbor_array[:, i, :]
-            print(neighbor_array.shape[1])
             slice = slice[~(slice == 0).all(axis=1)]
             plt.plot(slice[:,0],slice[:,1], alpha=0.5)
             
@@ -428,28 +428,83 @@ if __name__ == "__main__":
     else:
         raise ValueError("Wrong File---Please Check!")
     
-    tensor_data,a=process_data_to_tensors(data, agent_threshold, ob_horizon, future_pre,settings.device)
+    tensor_data=process_data_to_tensors(data, agent_threshold, ob_horizon, future_pre,settings.device)
     #print(tensor_data)
 
 
 #%%
 
     model.double()
-    num=12
-    x=tensor_data[num][0]
-    y=tensor_data[num][1]
-    neighbor=tensor_data[num][2]
     
-    y_pred = model(x, neighbor, n_predictions=config.PRED_SAMPLES)
-    Pos_npred = []
+    for num in range(len(tensor_data)):
+    #num=8
+        x=tensor_data[num][0]
+        y=tensor_data[num][1]
+        neighbor=tensor_data[num][2]
+        
+        distance = sum(np.sqrt(np.diff(x[:,0,0].cpu().detach().numpy())**2 + np.diff(x[:,0,1].cpu().detach().numpy())**2))
+        
+        if distance>4:   
+            y_pred = model(x, neighbor, n_predictions=config.PRED_SAMPLES)
+            Pos_npred = []
+            
+            mode="Scenario_Pred"
+            
+        
+            plot_trajectory(x,y,y_pred,neighbor,mode)
+
+
+#%%
+    neighbor_array= neighbor.cpu().detach().numpy().squeeze()
     
-    mode="Scenario_Pred"
+    x_min, x_max = neighbor_array[:,:,0].min(), neighbor_array[:,:,0].max()
+    y_min, y_max = neighbor_array[:,:,1].min(), neighbor_array[:,:,1].max()
+
+    x_min, x_max = x_min - 0.2 * (x_max - x_min), x_max + 0.2 * (x_max - x_min)
+    y_min, y_max = y_min - 0.2 * (y_max - y_min), y_max + 0.2 * (y_max - y_min)
+    
+    x = np.linspace(x_min, x_max, 200)
+    y = np.linspace(y_min, y_max, 200)
+    X, Y = np.meshgrid(x, y)
+
+    kappa = 1
+    kappa1,kappa2 = 0.2, 0.4
+
+    lambda_val,gamma_val,m_val=2,0.5,2
+    temp_neighbor_array=neighbor_array[0,:,:]
+    
+    for index, row in enumerate(temp_neighbor_array):
+        
+        x0=row[0]
+        y0=row[1]
+        Vx=row[2]
+        Vy=row[3]*3.6
+        ax=row[4]*3.6
+        ay=row[5]
+        if index==0:  
+            field_strength = DRF.DRF_strength(X, Y, x0, y0, Vx,Vy, ax,ay, kappa,kappa1,kappa2,lambda_val,gamma_val,m_val)
+            print(field_strength)
+        else:
+            field_strength += DRF.DRF_strength(X, Y, x0, y0, Vx,Vy, ax,ay, kappa,kappa1,kappa2,lambda_val,gamma_val,m_val)
+       
+            print(field_strength)
+            
+    #field_strength = np.where(field_strength >=1 , field_strength, 0)   
+    field_strength = np.clip(field_strength, None,5)
+        
+    plt.contourf(X, Y, field_strength, levels=100, cmap='viridis')
+        
+    plt.colorbar(label='Field Strength')
+    plt.title('Elliptical Field Strength')
+    plt.xlabel('X-axis')
+    plt.ylabel('Y-axis')
+    plt.gca().set_aspect('equal', adjustable='box')  # 保持横纵坐标比例一致
+    plt.grid(True)
+    plt.show()
     
 
-    plot_trajectory(x,y,y_pred,neighbor,mode)
-
-
-
+    
+    #DRF.DRF_strength(x, y, x0, y0, Vx, Vy, ax, ay, kappa, kappa1, kappa2, lambda_val, gamma_val, m_val)
 
 
 
