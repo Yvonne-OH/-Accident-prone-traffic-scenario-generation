@@ -7,6 +7,7 @@ import pandas as pd
 from tqdm import tqdm
 from tabulate import tabulate
 from itertools import islice
+import Lanelet_Map_Viz
 
 #%%
 # -*- coding: utf-8 -*-
@@ -34,6 +35,13 @@ from torch.utils.tensorboard import SummaryWriter
 from social_vae import SocialVAE
 from data import Dataloader
 from utils import ADE_FDE, FPC, seed, get_rng_state, set_rng_state
+
+try:
+    import lanelet2
+    use_lanelet2_lib = True
+    print("Successfully imported lanelet2.")
+except ImportError:
+    import warnings
 
 
 
@@ -157,7 +165,7 @@ def process_data_to_tensors(data, agent_threshold, ob_horizon, future_pre,device
                 print("Break due to Num Limit")
                 
                 break                        
-    return tensors_list,grouped_list
+    return tensors_list
 #%%
 def Vehicle_Viz(ax, centers,angles,width, height,style="r-"):
     """
@@ -218,17 +226,14 @@ def calculate_headings(x, y):
 
     return headings
 
-def plot_trajectory(x,y,y_pred,neighbor,mode,EN_vehicle=True,Length=4,Width=1.8,Style='b--'):
+def plot_trajectory(fig,ax,x,y,y_pred,neighbor,mode,EN_vehicle=True,Length=4,Width=1.8,Style='b--'):
     
     
     color_list = ['#F1D77E', '#d76364','#2878B5', '#9AC9DB', '#F8AC8C', '#C82423',
                       '#FF8884', '#8ECFC9',"#F3D266","#B1CE46","#a1a9d0","#F6CAE5",
                       '#F1D77E', '#d76364','#2878B5', '#9AC9DB', '#F8AC8C', '#C82423',
                       '#FF8884', '#8ECFC9',"#F3D266","#B1CE46","#a1a9d0","#F6CAE5",]
-        
-    
-    fig, ax = plt.subplots()
-    
+          
         
     if mode=="Ego_Pred":
         # Drawing the trajectories
@@ -253,7 +258,7 @@ def plot_trajectory(x,y,y_pred,neighbor,mode,EN_vehicle=True,Length=4,Width=1.8,
         plt.ylabel('Y-axis')
         plt.legend()
         plt.grid(True)
-        plt.show()
+        #plt.show()
         
         
     if mode=="Scenario_Pred":
@@ -306,12 +311,21 @@ def plot_trajectory(x,y,y_pred,neighbor,mode,EN_vehicle=True,Length=4,Width=1.8,
         plt.ylabel('Y-axis')
         plt.legend()
         plt.grid(True)
-        plt.show()
+        #plt.show()
 
-    return Pos_npred
+    return Pos_npred,ax
 #%%
 
 if __name__ == "__main__":
+    
+    
+    parser.add_argument("--lat_origin", type=float,
+                        help="Latitude of the reference point for the projection of the lanelet map (float)",
+                        default=0.0, nargs="?")
+    parser.add_argument("--lon_origin", type=float,
+                        help="Longitude of the reference point for the projection of the lanelet map (float)",
+                        default=0.0, nargs="?")
+    
     settings = parser.parse_args()
     spec = importlib.util.spec_from_file_location("config", settings.config)
     config = importlib.util.module_from_spec(spec)
@@ -449,12 +463,29 @@ if __name__ == "__main__":
             Pos_npred = []
             
             mode="Scenario_Pred"
+                        
+            lanelet_map_file = "DR_USA_Roundabout_FT.osm"
+            lat_origin = settings.lat_origin  # origin is necessary to correctly project the lat lon values of the map to the local
+            lon_origin = settings.lon_origin  # coordinates in which the tracks are provided; defaulting to (0|0) for every scenario
             
-        
-            plot_trajectory(x,y,y_pred,neighbor,mode)
+            
+            fig, ax = plt.subplots()
+            
+            Pos_npred,ax=plot_trajectory(fig, ax,x,y,y_pred,neighbor,mode)
+                   
+            projector = lanelet2.projection.UtmProjector(lanelet2.io.Origin(lat_origin, lon_origin))
+            laneletmap = lanelet2.io.load(lanelet_map_file, projector)
+            
+            Lanelet_Map_Viz.draw_lanelet_map(laneletmap, ax)
+            #plt.plot([1020,1000],"ro")
+            
+            
+
+            plt.show()
 
 
 #%%
+"""
     neighbor_array= neighbor.cpu().detach().numpy().squeeze()
     
     x_min, x_max = neighbor_array[:,:,0].min(), neighbor_array[:,:,0].max()
@@ -500,9 +531,13 @@ if __name__ == "__main__":
     plt.ylabel('Y-axis')
     plt.gca().set_aspect('equal', adjustable='box')  # 保持横纵坐标比例一致
     plt.grid(True)
+    
+    #Lanelet_Map_Viz
     plt.show()
     
-
+    DR_USA_Roundabout_FT.osm
+    
+"""
     
     #DRF.DRF_strength(x, y, x0, y0, Vx, Vy, ax, ay, kappa, kappa1, kappa2, lambda_val, gamma_val, m_val)
 
