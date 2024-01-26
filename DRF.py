@@ -52,57 +52,58 @@ def DRF_strength(x, y, x0, y0, Vx, Vy, ax,ay, kappa, kappa1, kappa2, lambda_val,
     #strength = np.where(strength <=0 , strength, np.nan)
     return np.clip(strength, None, 2.5)
 
-
-file_path = 'neighbor.csv'  # 请替换为你的 CSV 文件路径
-data = pd.read_csv(file_path)
-data.columns = ['x', 'y','Vx','Vy','ax','ay']
-
-#%%
-# 创建势能场的坐标网格
-x_min, x_max = data['x'].min(), data['x'].max()
-y_min, y_max = data['y'].min(), data['y'].max()
-
-# 将网格扩大10%
-x_min, x_max = x_min - 0.2 * (x_max - x_min), x_max + 0.2 * (x_max - x_min)
-y_min, y_max = y_min - 0.2 * (y_max - y_min), y_max + 0.2 * (y_max - y_min)
-
-# 创建扩大后的坐标网格
-x = np.linspace(x_min, x_max, 100)
-y = np.linspace(y_min, y_max, 100)
-X, Y = np.meshgrid(x, y)
-
-kappa = 1
-kappa1,kappa2 = 0.2, 0.4
-
-lambda_val,gamma_val,m_val=2,0.5,2
-
-for index, row in data.iterrows():
+if __name__ == "__main__":
+    file_path = 'neighbor.csv'  # 请替换为你的 CSV 文件路径
+    data = pd.read_csv(file_path)
+    data.columns = ['x', 'y','Vx','Vy','ax','ay']
     
-    x0=row['x']
-    y0=row['y']
-    Vx=row['Vx']*1
-    Vy=row['Vy']*1
-    ax=row['ax']
-    ay=row['ay']
-    if index==0:  
-        field_strength = DRF_strength(X, Y, x0, y0, Vx,Vy, ax,ay, kappa,kappa1,kappa2,lambda_val,gamma_val,m_val)
-        print(field_strength)
-    else:
-        field_strength += DRF_strength(X, Y, x0, y0, Vx,Vy, ax,ay, kappa,kappa1,kappa2,lambda_val,gamma_val,m_val)
-   
-        print(field_strength)
+    #%%
+    
+    # 创建势能场的坐标网格
+    x_min, x_max = data['x'].min(), data['x'].max()
+    y_min, y_max = data['y'].min(), data['y'].max()
+    
+    # 将网格扩大10%
+    x_min, x_max = x_min - 0.2 * (x_max - x_min), x_max + 0.2 * (x_max - x_min)
+    y_min, y_max = y_min - 0.2 * (y_max - y_min), y_max + 0.2 * (y_max - y_min)
+    
+    # 创建扩大后的坐标网格
+    x = np.linspace(x_min, x_max, 100)
+    y = np.linspace(y_min, y_max, 100)
+    X, Y = np.meshgrid(x, y)
+    
+    kappa = 1
+    kappa1,kappa2 = 0.2, 0.4
+    
+    lambda_val,gamma_val,m_val=2,0.5,2
+    
+    for index, row in data.iterrows():
         
-field_strength = np.where(field_strength >=1 , field_strength, np.nan)   
-field_strength = np.clip(field_strength, None,5)
-    
-plt.contourf(X, Y, field_strength, levels=100, cmap='viridis')
-    
-plt.colorbar(label='Field Strength')
-plt.title('Elliptical Field Strength')
-plt.xlabel('X-axis')
-plt.ylabel('Y-axis')
-plt.gca().set_aspect('equal', adjustable='box')  # 保持横纵坐标比例一致
-plt.grid(True)
-plt.show()
+        x0=row['x']
+        y0=row['y']
+        Vx=row['Vx']*1
+        Vy=row['Vy']*1
+        ax=row['ax']
+        ay=row['ay']
+        if index==0:  
+            field_strength = DRF_strength(X, Y, x0, y0, Vx,Vy, ax,ay, kappa,kappa1,kappa2,lambda_val,gamma_val,m_val)
+            print(field_strength)
+        else:
+            field_strength += DRF_strength(X, Y, x0, y0, Vx,Vy, ax,ay, kappa,kappa1,kappa2,lambda_val,gamma_val,m_val)
+       
+            print(field_strength)
+            
+    field_strength = np.where(field_strength >=1 , field_strength, np.nan)   
+    field_strength = np.clip(field_strength, None,5)
+        
+    plt.contourf(X, Y, field_strength, levels=100, cmap='viridis')
+        
+    plt.colorbar(label='Field Strength')
+    plt.title('Elliptical Field Strength')
+    plt.xlabel('X-axis')
+    plt.ylabel('Y-axis')
+    plt.gca().set_aspect('equal', adjustable='box')  # 保持横纵坐标比例一致
+    plt.grid(True)
+    plt.show()
 
 

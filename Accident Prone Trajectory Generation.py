@@ -441,13 +441,11 @@ if __name__ == "__main__":
         output_directory = os.path.join(current_directory, "Data","Interation",file_name.rsplit('_', 1)[0],"val")
     else:
         raise ValueError("Wrong File---Please Check!")
-    
     tensor_data=process_data_to_tensors(data, agent_threshold, ob_horizon, future_pre,settings.device)
     #print(tensor_data)
 
 
 #%%
-
     model.double()
     
     for num in range(len(tensor_data)):
@@ -456,6 +454,25 @@ if __name__ == "__main__":
         y=tensor_data[num][1]
         neighbor=tensor_data[num][2]
         
+        Exp_L2= []
+        for i in range(neighbor.shape[2]):
+            neighbor_array=neighbor[-25-1:-1,:,i,0:2].cpu().detach().numpy().squeeze()
+            ego_pre_array=y.cpu().detach().numpy().squeeze()
+            Exp_L2.append((np.exp(-np.linalg.norm((ego_pre_array-neighbor_array), axis=1))))
+        
+        delta = [item / np.sum(Exp_L2) for item in Exp_L2]
+        
+        L_adv=[]
+        
+        for i in range(neighbor.shape[2]):
+           
+           neighbor_array=neighbor[-25-1:-1,:,i,0:2].cpu().detach().numpy().squeeze()
+           ego_pre_array=y.cpu().detach().numpy().squeeze()
+           L_adv.append(np.sum(delta[i]*np.linalg.norm((ego_pre_array-neighbor_array), axis=1)))
+           pass
+            #Exp_L2.append(sum(np.exp(-np.linalg.norm((ego_pre_array-neighbor_array), axis=1))))
+        L_adv=np.sum(L_adv)
+
         distance = sum(np.sqrt(np.diff(x[:,0,0].cpu().detach().numpy())**2 + np.diff(x[:,0,1].cpu().detach().numpy())**2))
         
         if distance>4:   
@@ -479,8 +496,6 @@ if __name__ == "__main__":
             Lanelet_Map_Viz.draw_lanelet_map(laneletmap, ax)
             #plt.plot([1020,1000],"ro")
             
-            
-
             plt.show()
 
 
