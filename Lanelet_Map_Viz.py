@@ -19,7 +19,7 @@ from matplotlib.collections import PatchCollection
 try:
     import lanelet2
     use_lanelet2_lib = True
-    print("Successfully imported lanelet2.")
+    #print("Successfully imported lanelet2.")
 except ImportError:
     import warnings
 

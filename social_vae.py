@@ -354,7 +354,10 @@ class SocialVAE(torch.nn.Module):
 
         d = torch.stack(D)
         with torch.no_grad():
+            
             y = y - x[-1,...,:2].unsqueeze(0)
+            
+            
         pred = torch.cumsum(d, 0) #Returns the cumulative sum of the input elements in the dimension dim
 
         err = (pred - y).square()
@@ -363,14 +366,59 @@ class SocialVAE(torch.nn.Module):
         for p, q, z in zip(P, Q, Z):
             kl.append(q.log_prob(z) - p.log_prob(z))
         kl = torch.stack(kl)
-        return err, kl
+        
+        
+        Exp_L2 = []
+        for i in range(neighbor.shape[2]):
+            neighbor_array = neighbor[-25:, :, i, 0:2].double()
+            
+            #print("Neighbor_shape",neighbor_array.shape)
+            #print("pred_shape",pred.shape)
+            #print(x[-1,...,:2].shape)
+            
+            ego_pre_array = (pred+x[-1,...,:2]).double()
+            
+            #print((ego_pre_array - neighbor_array)[:,0,:])
+            #print((ego_pre_array)[:,0,:])
+            #print((ego_pre_array - neighbor_array).shape)
+            Exp_L2.append(torch.exp(-torch.sqrt(torch.norm((ego_pre_array - neighbor_array), dim=2))))
+            
+        Exp_L2 = torch.stack(Exp_L2, dim=0)
+        #print(torch.max(Exp_L2))   
+            
+        delta = Exp_L2 / torch.sum(Exp_L2, dim=0)
+        
+        
+        L_adv = []
+        for i in range(neighbor.shape[2]):
+            neighbor_array = neighbor[-25:, :, i, 0:2]
+            ego_pre_array = (pred+x[-1,...,:2]).double()
+            L_adv.append(torch.sum(delta[i,:,:] * torch.sqrt(torch.norm((ego_pre_array - neighbor_array), dim=2))))
+    
+        L_adv_loss = torch.sum(torch.stack(L_adv))
+        
+        
+        
+        return err, kl, L_adv_loss
 
-    def loss(self, err, kl):
+    def loss(self, err, kl, L_adv_loss):
+       
         rec = err.mean()
         kl = kl.mean()
+        
+        if 25*err[0:2,:,:].mean()>=0.6:
+            loss= kl+1*rec+25*err[0:2,:,:].mean()
+        else:
+            if L_adv_loss>3000:
+                loss= kl+1*rec+25*err[0:2,:,:].mean()+0.01*(L_adv_loss)
+            else:
+                loss= kl+1*rec+25*err[0:2,:,:].mean()+torch.ln(L_adv_loss)
 
         return {
-            "loss": kl+rec,
+            
+            "loss": loss,
             "rec": rec,
-            "kl": kl
+            "kl": kl,
+            "L_Adv":L_adv_loss,
+            "First_Pred":25*err[0:2,:,:].mean()
         }

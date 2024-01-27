@@ -453,12 +453,13 @@ if __name__ == "__main__":
         x=tensor_data[num][0]
         y=tensor_data[num][1]
         neighbor=tensor_data[num][2]
-        
+        """
         Exp_L2= []
-        for i in range(neighbor.shape[2]):
-            neighbor_array=neighbor[-25-1:-1,:,i,0:2].cpu().detach().numpy().squeeze()
-            ego_pre_array=y.cpu().detach().numpy().squeeze()
-            Exp_L2.append((np.exp(-np.linalg.norm((ego_pre_array-neighbor_array), axis=1))))
+        for i in range(10):
+            neighbor_array=neighbor[-25-1:-1,:,i,0:2].cpu().detach()
+            ego_pre_array=y.cpu().detach()
+            print(ego_pre_array-neighbor_array)
+            Exp_L2.append((np.exp(-np.linalg.norm((ego_pre_array-neighbor_array), axis=2))))
         
         delta = [item / np.sum(Exp_L2) for item in Exp_L2]
         
@@ -466,12 +467,13 @@ if __name__ == "__main__":
         
         for i in range(neighbor.shape[2]):
            
-           neighbor_array=neighbor[-25-1:-1,:,i,0:2].cpu().detach().numpy().squeeze()
-           ego_pre_array=y.cpu().detach().numpy().squeeze()
-           L_adv.append(np.sum(delta[i]*np.linalg.norm((ego_pre_array-neighbor_array), axis=1)))
-           pass
+           neighbor_array=neighbor[-25-1:-1,:,i,0:2].cpu().detach()
+           ego_pre_array=y.cpu().detach()
+           
+           L_adv.append(np.sum(delta[i]*np.linalg.norm((ego_pre_array-neighbor_array), axis=2)))
+           a=L_adv
             #Exp_L2.append(sum(np.exp(-np.linalg.norm((ego_pre_array-neighbor_array), axis=1))))
-        L_adv=np.sum(L_adv)
+        L_adv=np.sum(L_adv)"""
 
         distance = sum(np.sqrt(np.diff(x[:,0,0].cpu().detach().numpy())**2 + np.diff(x[:,0,1].cpu().detach().numpy())**2))
         
@@ -480,6 +482,7 @@ if __name__ == "__main__":
             Pos_npred = []
             
             mode="Scenario_Pred"
+            mode="Ego_Pred"
                         
             lanelet_map_file = "DR_USA_Roundabout_FT.osm"
             lat_origin = settings.lat_origin  # origin is necessary to correctly project the lat lon values of the map to the local
@@ -493,7 +496,7 @@ if __name__ == "__main__":
             projector = lanelet2.projection.UtmProjector(lanelet2.io.Origin(lat_origin, lon_origin))
             laneletmap = lanelet2.io.load(lanelet_map_file, projector)
             
-            Lanelet_Map_Viz.draw_lanelet_map(laneletmap, ax)
+            #Lanelet_Map_Viz.draw_lanelet_map(laneletmap, ax)
             #plt.plot([1020,1000],"ro")
             
             plt.show()
