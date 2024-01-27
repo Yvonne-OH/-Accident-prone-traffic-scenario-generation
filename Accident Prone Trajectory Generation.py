@@ -75,7 +75,7 @@ def process_data_to_tensors(data, agent_threshold, ob_horizon, future_pre,device
     
     N=ob_horizon+future_pre+2
     tensors_list = []
-    num_items_to_process = 10
+    num_items_to_process = 50
     processed_count=0
 
     grouped_data = data.groupby('case_id')
@@ -482,7 +482,7 @@ if __name__ == "__main__":
             Pos_npred = []
             
             mode="Scenario_Pred"
-            mode="Ego_Pred"
+            #mode="Ego_Pred"
                         
             lanelet_map_file = "DR_USA_Roundabout_FT.osm"
             lat_origin = settings.lat_origin  # origin is necessary to correctly project the lat lon values of the map to the local
@@ -496,8 +496,8 @@ if __name__ == "__main__":
             projector = lanelet2.projection.UtmProjector(lanelet2.io.Origin(lat_origin, lon_origin))
             laneletmap = lanelet2.io.load(lanelet_map_file, projector)
             
-            #Lanelet_Map_Viz.draw_lanelet_map(laneletmap, ax)
-            #plt.plot([1020,1000],"ro")
+            Lanelet_Map_Viz.draw_lanelet_map(laneletmap, ax)
+            plt.plot([1020,1000],"ro")
             
             plt.show()
 

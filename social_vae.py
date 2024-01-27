@@ -397,22 +397,28 @@ class SocialVAE(torch.nn.Module):
     
         L_adv_loss = torch.sum(torch.stack(L_adv))
         
+        max_timesteps=25 
+        alpha=0.1
         
+        weights = torch.exp(-alpha * torch.arange(max_timesteps, device=err.device))
+        #print(weights)
+        weights = weights.view(max_timesteps,1,1)
+        weighted_err = weights * err
+        avg_mse_loss = weighted_err.sum()/ weights.sum()
         
-        return err, kl, L_adv_loss
+                
+        return err, kl, L_adv_loss,avg_mse_loss
 
-    def loss(self, err, kl, L_adv_loss):
+    def loss(self, err, kl, L_adv_loss,avg_mse_loss):
        
         rec = err.mean()
         kl = kl.mean()
         
-        if 25*err[0:2,:,:].mean()>=0.6:
-            loss= kl+1*rec+25*err[0:2,:,:].mean()
+
+        if L_adv_loss>3000:
+            loss= kl+0*rec+avg_mse_loss+(L_adv_loss)
         else:
-            if L_adv_loss>3000:
-                loss= kl+1*rec+25*err[0:2,:,:].mean()+0.01*(L_adv_loss)
-            else:
-                loss= kl+1*rec+25*err[0:2,:,:].mean()+torch.ln(L_adv_loss)
+            loss= kl+0*rec+avg_mse_loss+torch.ln(L_adv_loss)
 
         return {
             
@@ -420,5 +426,5 @@ class SocialVAE(torch.nn.Module):
             "rec": rec,
             "kl": kl,
             "L_Adv":L_adv_loss,
-            "First_Pred":25*err[0:2,:,:].mean()
+            "avg_mse_loss":avg_mse_loss
         }
