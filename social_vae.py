@@ -312,6 +312,49 @@ class SocialVAE(torch.nn.Module):
         pred = pred + x[-1,...,:2]
         if C < 3: pred = pred.squeeze(1)
         return pred
+    
+    def Adv_loss(self,neighbor, pred, x, err):
+        # Initialize the list for Exp_L2
+        Exp_L2 = []
+        for i in range(neighbor.shape[2]):
+            neighbor_array = neighbor[-pred.shape[0]:, :, i, 0:2].double()         
+            ego_pre_array = (pred + x[-1,...,:2]).double()
+            Exp_L2.append(torch.exp(-torch.sqrt(torch.norm((ego_pre_array - neighbor_array), dim=2))))
+        
+        # Stack and normalize Exp_L2 to get delta
+        Exp_L2 = torch.stack(Exp_L2, dim=0)
+        delta = Exp_L2 / torch.sum(Exp_L2, dim=0)
+       
+        # Initialize the list for L_adv
+        L_adv = []
+        for i in range(neighbor.shape[2]):
+            neighbor_array = neighbor[-pred.shape[0]:, :, i, 0:2].double()
+            ego_pre_array = (pred + x[-1,...,:2]).double()
+            L_adv.append(torch.sum(delta[i,:,:] * torch.sqrt(torch.norm((ego_pre_array - neighbor_array), dim=2))))
+        
+        # Calculate L_adv_loss
+        L_adv_loss = torch.sum(torch.stack(L_adv))
+        
+        return L_adv_loss
+    
+    def weighted_mse_loss(self, pred, err,alpha=0.1):
+        """
+        Compute the weighted mean squared error.
+    
+        Parameters:
+        alpha (float): The weight scaling factor.
+        pred (torch.Tensor): The tensor of predictions.
+        err (torch.Tensor): The tensor of errors (difference between predictions and ground truth).
+    
+        Returns:
+        torch.Tensor: The computed weighted mean squared error.
+        """
+        weights = torch.exp(-alpha * torch.arange(pred.shape[0], device=err.device))
+        weights = weights.view(pred.shape[0], 1, 1)
+        weighted_err = weights * err
+        avg_weighted_mse_loss = weighted_err.sum() / weights.sum()
+    
+        return avg_weighted_mse_loss
 
     def learn(self, x, y, neighbor=None, map=None):
         C = x.dim()
@@ -368,63 +411,28 @@ class SocialVAE(torch.nn.Module):
         kl = torch.stack(kl)
         
         
-        Exp_L2 = []
-        for i in range(neighbor.shape[2]):
-            neighbor_array = neighbor[-25:, :, i, 0:2].double()
-            
-            #print("Neighbor_shape",neighbor_array.shape)
-            #print("pred_shape",pred.shape)
-            #print(x[-1,...,:2].shape)
-            
-            ego_pre_array = (pred+x[-1,...,:2]).double()
-            
-            #print((ego_pre_array - neighbor_array)[:,0,:])
-            #print((ego_pre_array)[:,0,:])
-            #print((ego_pre_array - neighbor_array).shape)
-            Exp_L2.append(torch.exp(-torch.sqrt(torch.norm((ego_pre_array - neighbor_array), dim=2))))
-            
-        Exp_L2 = torch.stack(Exp_L2, dim=0)
-        #print(torch.max(Exp_L2))   
-            
-        delta = Exp_L2 / torch.sum(Exp_L2, dim=0)
-        
-        
-        L_adv = []
-        for i in range(neighbor.shape[2]):
-            neighbor_array = neighbor[-25:, :, i, 0:2]
-            ego_pre_array = (pred+x[-1,...,:2]).double()
-            L_adv.append(torch.sum(delta[i,:,:] * torch.sqrt(torch.norm((ego_pre_array - neighbor_array), dim=2))))
-    
-        L_adv_loss = torch.sum(torch.stack(L_adv))
-        
-        max_timesteps=25 
-        alpha=0.1
-        
-        weights = torch.exp(-alpha * torch.arange(max_timesteps, device=err.device))
-        #print(weights)
-        weights = weights.view(max_timesteps,1,1)
-        weighted_err = weights * err
-        avg_mse_loss = weighted_err.sum()/ weights.sum()
+        L_adv_loss=self.Adv_loss(neighbor, pred, x, err)
+        avg_weighted_mse_loss=self.weighted_mse_loss(pred, err,alpha=0.1)
         
                 
-        return err, kl, L_adv_loss,avg_mse_loss
+        return err, kl, L_adv_loss,avg_weighted_mse_loss
+    
 
-    def loss(self, err, kl, L_adv_loss,avg_mse_loss):
+    def loss(self, err, kl, L_adv_loss,avg_weighted_mse_loss):
        
         rec = err.mean()
         kl = kl.mean()
         
-
-        if L_adv_loss>3000:
-            loss= kl+0*rec+avg_mse_loss+(L_adv_loss)
+        if L_adv_loss>8000:
+            loss= kl+avg_weighted_mse_loss+(L_adv_loss)
         else:
-            loss= kl+0*rec+avg_mse_loss+torch.ln(L_adv_loss)
+            loss= kl+avg_weighted_mse_loss+torch.ln(L_adv_loss)
 
         return {
             
             "loss": loss,
             "rec": rec,
             "kl": kl,
-            "L_Adv":L_adv_loss,
-            "avg_mse_loss":avg_mse_loss
+            "L_adv_loss":L_adv_loss,
+            "Avg_weighted_mse_loss":avg_weighted_mse_loss
         }
