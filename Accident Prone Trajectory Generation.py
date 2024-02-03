@@ -9,13 +9,6 @@ from tabulate import tabulate
 from itertools import islice
 import Lanelet_Map_Viz
 from matplotlib.animation import FuncAnimation
-#%%
-# -*- coding: utf-8 -*-
-"""
-Created on Fri Jan  5 15:47:22 2024
-
-@author: 39829
-"""
 
 import sys
 #sys.argv = ["main.py", "--train","data/nba/rebound/train", "--test", "data/nba/rebound/test", "--ckpt", "log_rebound", "--config", "config/nba_rebound.py"]
@@ -30,6 +23,7 @@ import numpy as np
 import itertools
 import seaborn as sns
 import matplotlib.pyplot as plt
+from datetime import datetime
 from torch.utils.tensorboard import SummaryWriter
 
 from social_vae import SocialVAE
@@ -43,7 +37,17 @@ try:
 except ImportError:
     import warnings
 
+"""
+x: Input trajectory positions. Shape_x: (L1+1) x N x 6, where L1 is the length of the first trajectory, 
+N is the number of trajectories, and 6 represents the trajectory information 
+(e.g., x-coordinate, y-coordinate, velocity components).
 
+y: Additional trajectory information (optional). Shape_y: L2 x N x 2 
+
+neighbor: Neighbor information for each trajectory. Shape: (L1+L2+1) x N x Nn x 6, 
+where L2 is the length of the second trajectory, 
+Nn is the number of neighbors, and 6 represents neighbor information.
+"""
 
 import argparse
 parser = argparse.ArgumentParser()
@@ -57,17 +61,18 @@ parser.add_argument("--seed", type=int, default=1)
 parser.add_argument("--no-fpc", action="store_true", default=False)
 parser.add_argument("--fpc-finetune", action="store_true", default=False)
 
-"""
-x: Input trajectory positions. Shape_x: (L1+1) x N x 6, where L1 is the length of the first trajectory, 
-N is the number of trajectories, and 6 represents the trajectory information 
-(e.g., x-coordinate, y-coordinate, velocity components).
 
-y: Additional trajectory information (optional). Shape_y: L2 x N x 2 
+output_path = os.getcwd()+"\\Output"
 
-neighbor: Neighbor information for each trajectory. Shape: (L1+L2+1) x N x Nn x 6, 
-where L2 is the length of the second trajectory, 
-Nn is the number of neighbors, and 6 represents neighbor information.
-"""
+# Check if the directory exists
+if not os.path.exists(output_path):
+    # If it does not exist, create it
+    os.makedirs(output_path)
+    print(f"Directory created at {output_path}")
+else:
+    print(f"Directory already exists at {output_path}")
+
+
 
 #%%
 
@@ -307,7 +312,7 @@ def plot_trajectory(fig,ax,x,y,y_pred,neighbor,mode,EN_vehicle=True,Length=4,Wid
 
 
 
-def plot_trajectory_animation(x, y, y_pred, neighbor, laneletmap,mode, EN_vehicle=True, Length=4, Width=1.8, Style='b-'):
+def plot_trajectory_animation(x, y, y_pred, neighbor, laneletmap,mode,output_path,name,EN_vehicle=True, Length=4, Width=1.8, Style='b-'):
     fig, ax = plt.subplots(figsize=(10.24, 7.68))
     color_list = ['#F1D77E', '#d76364','#2878B5', '#9AC9DB', '#F8AC8C', '#C82423',
                   '#FF8884', '#8ECFC9',"#F3D266","#B1CE46","#a1a9d0","#F6CAE5"] * 2
@@ -317,6 +322,7 @@ def plot_trajectory_animation(x, y, y_pred, neighbor, laneletmap,mode, EN_vehicl
     Ego_his_y = x[:,0,1].cpu().detach().numpy()
     Ego_future_x = y[:,0,0].cpu().detach().numpy()
     Ego_future_y = y[:,0,1].cpu().detach().numpy()
+    y_pred=y_pred.cpu().detach().numpy()
     
     neighbor_array= neighbor.cpu().detach().numpy().squeeze() 
     
@@ -344,8 +350,7 @@ def plot_trajectory_animation(x, y, y_pred, neighbor, laneletmap,mode, EN_vehicl
         ax.clear()
         ax.grid(True)
         Lanelet_Map_Viz.draw_lanelet_map(laneletmap, ax)
-        #ax.set_xlim(np.min(Ego_x)-10, np.max(Ego_x)+10)
-        #ax.set_ylim(np.min(Ego_his_y)-10, np.max(Ego_his_y)+10)
+
         print(frame)
 
         if frame<=len(Ego_his_x):
@@ -356,7 +361,22 @@ def plot_trajectory_animation(x, y, y_pred, neighbor, laneletmap,mode, EN_vehicl
             ax.plot(Ego_his_x[0:frame], Ego_his_y[0:frame], 'k-o', markersize=1, markeredgecolor='black', markerfacecolor='k')
             ax.plot(Ego_future_x[0:frame-len(Ego_his_x)], Ego_future_y[0:frame-len(Ego_his_x)], 'pink', markersize=1, markeredgecolor='black', markerfacecolor='k')
             headings=calculate_headings(Ego_future_x,Ego_future_y)
-            Vehicle_Viz(ax, list(zip(Ego_future_x[max(0,frame-1-len(Ego_his_x)):frame-len(Ego_his_x)],Ego_future_y[max(0,frame-1-len(Ego_his_x)):frame-len(Ego_his_x)])),headings[max(0,frame-1-len(Ego_his_x)):frame-len(Ego_his_x)],Length,Width,'r-')
+            Vehicle_Viz(ax, list(zip(Ego_future_x[max(0,frame-1-len(Ego_his_x)):frame-len(Ego_his_x)],Ego_future_y[max(0,frame-1-len(Ego_his_x)):frame-len(Ego_his_x)])),headings[max(0,frame-1-len(Ego_his_x)):frame-len(Ego_his_x)],Length,Width,'pink')
+            for N in range(y_pred.shape[0]):
+                plt.plot(y_pred[N,0:frame-len(Ego_his_x),0,0],
+                         y_pred[N,0:frame-len(Ego_his_x),0,1],
+                         color=color_list[N], marker='o', markersize=1, markerfacecolor=color_list[N])
+                headings=calculate_headings(y_pred[N,0:frame,0,0],y_pred[N,0:frame,0,1])
+            
+                Vehicle_Viz(ax, 
+                            list(zip(y_pred[N,max(0,frame-1-len(Ego_his_x)):frame-len(Ego_his_x),0,0],
+                                     y_pred[N,max(0,frame-1-len(Ego_his_x)):frame-len(Ego_his_x),0,1])),
+                            headings[max(0,frame-1-len(Ego_his_x)):frame-len(Ego_his_x)],
+                            Length,
+                            Width,
+                            color_list[N])
+        
+        
         for i in range(neighbor_array.shape[1]):
             slice = neighbor_array[:, i, :]
             slice = slice[~(slice == 0).all(axis=1)]
@@ -365,7 +385,9 @@ def plot_trajectory_animation(x, y, y_pred, neighbor, laneletmap,mode, EN_vehicl
             headings=calculate_headings(slice[:,0],slice[:,1])[frame-1:frame]         
             Vehicle_Viz(ax, list(zip(slice[frame-1:frame,0],slice[frame-1:frame,1])),headings,Length,Width,Style)
             ax.plot(slice[0:frame,0],slice[0:frame,1], 'k-o', markersize=1, markeredgecolor='black', markerfacecolor='k')
-            
+        
+        
+        
             ax.set_xlabel('X/m')  
             ax.set_ylabel('Y/m')  
             ax.set_title('Accident Prone Trajectory Generation')
@@ -373,9 +395,7 @@ def plot_trajectory_animation(x, y, y_pred, neighbor, laneletmap,mode, EN_vehicl
 
     ani = FuncAnimation(fig, update, frames=len(Ego_his_x)+len(Ego_future_x), init_func=init, blit=False)
 
-    # Save the animation as a GIF
-    # Ensure you have ImageMagick or Pillow configured correctly for this to work
-    ani.save('trajectory_animation.gif', writer='pillow', fps=10, dpi=100)
+    ani.save(output_path+"\\"+name, writer='pillow', fps=10, dpi=100)
 
 #%%
 
@@ -511,8 +531,8 @@ if __name__ == "__main__":
 #%%
     model.double()
     
-    #for num in range(len(tensor_data)):
-    for num in range(10):
+    for num in range(len(tensor_data)):
+    #for num in range(10):
     #num=8
         x=tensor_data[num][0]
         y=tensor_data[num][1]
@@ -563,7 +583,8 @@ if __name__ == "__main__":
             #Lanelet_Map_Viz.draw_lanelet_map(laneletmap, ax)
             
             #Pos_npred,ax=plot_trajectory(fig, ax,x,y,y_pred,neighbor,mode)
-            plot_trajectory_animation(x, y, y_pred, neighbor,laneletmap, mode)
+            name=file_name.rpartition('_')[0]+"_"+str(datetime.now()).replace("-", "_").replace(" ", "_").replace(".", "_").replace(":", "_")+".gif"
+            plot_trajectory_animation(x, y, y_pred, neighbor,laneletmap, mode,output_path,name)
             #plot_trajectory(fig,ax,x,y,y_pred,neighbor,mode,EN_vehicle=True,Length=4,Width=1.8,Style='b--')
             
 
