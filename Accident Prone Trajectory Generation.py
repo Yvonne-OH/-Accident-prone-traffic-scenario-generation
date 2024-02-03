@@ -8,7 +8,7 @@ from tqdm import tqdm
 from tabulate import tabulate
 from itertools import islice
 import Lanelet_Map_Viz
-
+from matplotlib.animation import FuncAnimation
 #%%
 # -*- coding: utf-8 -*-
 """
@@ -226,7 +226,7 @@ def calculate_headings(x, y):
 
     return headings
 
-def plot_trajectory(fig,ax,x,y,y_pred,neighbor,mode,EN_vehicle=True,Length=4,Width=1.8,Style='b--'):
+def plot_trajectory(fig,ax,x,y,y_pred,neighbor,mode,EN_vehicle=True,Length=4,Width=1.8,Style='b-'):
     
     
     color_list = ['#F1D77E', '#d76364','#2878B5', '#9AC9DB', '#F8AC8C', '#C82423',
@@ -295,16 +295,6 @@ def plot_trajectory(fig,ax,x,y,y_pred,neighbor,mode,EN_vehicle=True,Length=4,Wid
         
         x_data = x[:, 0, 0].cpu().detach().numpy()
         y_data = x[:, 0, 1].cpu().detach().numpy()
-        """
-        x_range = (np.min(x_data) - 80 * (np.max(x_data) - np.min(x_data)), 
-                   np.max(x_data) + 80 * (np.max(x_data) - np.min(x_data)))
-        y_range = (np.min(y_data) - 80 * (np.max(y_data) - np.min(y_data)), 
-                   np.max(y_data) + 80 * (np.max(y_data) - np.min(y_data)))
-        
-        plt.xlim(x_range)
-        plt.ylim(y_range)
-        """
-    
         
         plt.title('Trajectory Plot')
         plt.xlabel('X-axis')
@@ -314,6 +304,79 @@ def plot_trajectory(fig,ax,x,y,y_pred,neighbor,mode,EN_vehicle=True,Length=4,Wid
         #plt.show()
 
     return Pos_npred,ax
+
+
+
+def plot_trajectory_animation(x, y, y_pred, neighbor, laneletmap,mode, EN_vehicle=True, Length=4, Width=1.8, Style='b-'):
+    fig, ax = plt.subplots(figsize=(10.24, 7.68))
+    color_list = ['#F1D77E', '#d76364','#2878B5', '#9AC9DB', '#F8AC8C', '#C82423',
+                  '#FF8884', '#8ECFC9',"#F3D266","#B1CE46","#a1a9d0","#F6CAE5"] * 2
+    
+    # Assuming x and y are tensors with shape [num_frames, num_vehicles, 2]
+    Ego_his_x = x[:,0,0].cpu().detach().numpy()  # Convert the tensor to numpy for plotting
+    Ego_his_y = x[:,0,1].cpu().detach().numpy()
+    Ego_future_x = y[:,0,0].cpu().detach().numpy()
+    Ego_future_y = y[:,0,1].cpu().detach().numpy()
+    
+    neighbor_array= neighbor.cpu().detach().numpy().squeeze() 
+    
+
+    def init():
+        ax.clear()
+        ax.set_title('Trajectory Plot')
+        #ax.set_xlim(np.min(Ego_x)-10, np.max(Ego_x)+10)
+        #ax.set_ylim(np.min(Ego_his_y)-10, np.max(Ego_his_y)+10)
+        Lanelet_Map_Viz.draw_lanelet_map(laneletmap, ax)
+        ax.grid(True)
+        
+        for i in range(neighbor_array.shape[1]):
+            slice = neighbor_array[:, i, :]
+            slice = slice[~(slice == 0).all(axis=1)]
+            plt.plot(slice[:,0],slice[:,1], alpha=0.5)
+            headings=calculate_headings(slice[:,0],slice[:,1])          
+            Vehicle_Viz(ax, list(zip(slice[:,0],slice[:,1])),headings,Length,Width,Style)
+            ax.set_xlabel('X/m')  
+            ax.set_ylabel('Y/m')  
+            ax.set_title('Accident Prone Trajectory Generation')
+        return ax,
+
+    def update(frame):
+        ax.clear()
+        ax.grid(True)
+        Lanelet_Map_Viz.draw_lanelet_map(laneletmap, ax)
+        #ax.set_xlim(np.min(Ego_x)-10, np.max(Ego_x)+10)
+        #ax.set_ylim(np.min(Ego_his_y)-10, np.max(Ego_his_y)+10)
+        print(frame)
+
+        if frame<=len(Ego_his_x):
+            ax.plot(Ego_his_x[0:frame], Ego_his_y[0:frame], 'k-o', markersize=1, markeredgecolor='black', markerfacecolor='k')
+            headings=calculate_headings(Ego_his_x,Ego_his_y)
+            Vehicle_Viz(ax, list(zip(Ego_his_x[max(0,frame-1):frame],Ego_his_y[max(0,frame-1):frame])),headings[max(0,frame-1):frame],Length,Width,'r-')
+        else:
+            ax.plot(Ego_his_x[0:frame], Ego_his_y[0:frame], 'k-o', markersize=1, markeredgecolor='black', markerfacecolor='k')
+            ax.plot(Ego_future_x[0:frame-len(Ego_his_x)], Ego_future_y[0:frame-len(Ego_his_x)], 'pink', markersize=1, markeredgecolor='black', markerfacecolor='k')
+            headings=calculate_headings(Ego_future_x,Ego_future_y)
+            Vehicle_Viz(ax, list(zip(Ego_future_x[max(0,frame-1-len(Ego_his_x)):frame-len(Ego_his_x)],Ego_future_y[max(0,frame-1-len(Ego_his_x)):frame-len(Ego_his_x)])),headings[max(0,frame-1-len(Ego_his_x)):frame-len(Ego_his_x)],Length,Width,'r-')
+        for i in range(neighbor_array.shape[1]):
+            slice = neighbor_array[:, i, :]
+            slice = slice[~(slice == 0).all(axis=1)]
+            #plt.plot(slice[0:frame,0],slice[0:frame,1], alpha=0.5)
+            
+            headings=calculate_headings(slice[:,0],slice[:,1])[frame-1:frame]         
+            Vehicle_Viz(ax, list(zip(slice[frame-1:frame,0],slice[frame-1:frame,1])),headings,Length,Width,Style)
+            ax.plot(slice[0:frame,0],slice[0:frame,1], 'k-o', markersize=1, markeredgecolor='black', markerfacecolor='k')
+            
+            ax.set_xlabel('X/m')  
+            ax.set_ylabel('Y/m')  
+            ax.set_title('Accident Prone Trajectory Generation')
+        return ax,
+
+    ani = FuncAnimation(fig, update, frames=len(Ego_his_x)+len(Ego_future_x), init_func=init, blit=False)
+
+    # Save the animation as a GIF
+    # Ensure you have ImageMagick or Pillow configured correctly for this to work
+    ani.save('trajectory_animation.gif', writer='pillow', fps=10, dpi=100)
+
 #%%
 
 if __name__ == "__main__":
@@ -448,7 +511,8 @@ if __name__ == "__main__":
 #%%
     model.double()
     
-    for num in range(len(tensor_data)):
+    #for num in range(len(tensor_data)):
+    for num in range(10):
     #num=8
         x=tensor_data[num][0]
         y=tensor_data[num][1]
@@ -481,8 +545,10 @@ if __name__ == "__main__":
             y_pred = model(x, neighbor, n_predictions=config.PRED_SAMPLES)
             Pos_npred = []
             
+            
+            
             mode="Scenario_Pred"
-            #mode="Ego_Pred"
+            mode="Ego_Pred"
                         
             lanelet_map_file = "DR_USA_Roundabout_FT.osm"
             lat_origin = settings.lat_origin  # origin is necessary to correctly project the lat lon values of the map to the local
@@ -491,13 +557,17 @@ if __name__ == "__main__":
             
             fig, ax = plt.subplots()
             
-            Pos_npred,ax=plot_trajectory(fig, ax,x,y,y_pred,neighbor,mode)
-                   
             projector = lanelet2.projection.UtmProjector(lanelet2.io.Origin(lat_origin, lon_origin))
             laneletmap = lanelet2.io.load(lanelet_map_file, projector)
             
-            Lanelet_Map_Viz.draw_lanelet_map(laneletmap, ax)
-            plt.plot([1020,1000],"ro")
+            #Lanelet_Map_Viz.draw_lanelet_map(laneletmap, ax)
+            
+            #Pos_npred,ax=plot_trajectory(fig, ax,x,y,y_pred,neighbor,mode)
+            plot_trajectory_animation(x, y, y_pred, neighbor,laneletmap, mode)
+            #plot_trajectory(fig,ax,x,y,y_pred,neighbor,mode,EN_vehicle=True,Length=4,Width=1.8,Style='b--')
+            
+
+            
             
             plt.show()
 
