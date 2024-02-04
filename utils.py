@@ -59,6 +59,9 @@ def FPC(y, n_samples):
     a simple algorithm for selecting goal points from a set of trajectories. 
     """
     # y: S x L x 2
+    y=y.cpu().detach().numpy()
+    y=np.squeeze(y, axis=2)
+    print(y.shape)
     goal = y[...,-1,:2]  
     # Extracts the coordinates of the goal points at the last time step for each trajectory from the input array y, resulting in an array of shape (S, 2)
     goal_ = kmeans(n_samples, goal)  
