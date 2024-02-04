@@ -1,34 +1,34 @@
-import os
-import csv
-import DRF
-import torch
-import numpy as np
-import pandas as pd
-from tqdm import tqdm
-from tabulate import tabulate
-from itertools import islice
-import Lanelet_Map_Viz
-from matplotlib.animation import FuncAnimation
-
 import sys
 #sys.argv = ["main.py", "--train","data/nba/rebound/train", "--test", "data/nba/rebound/test", "--ckpt", "log_rebound", "--config", "config/nba_rebound.py"]
 #sys.argv = ["main.py", "--test","data/nba/rebound/test", "--ckpt", " models/nba/rebound", "--config", "config/nba_rebound.py"]
 #sys.argv = ["main.py", "--test","data/univ/test", "--ckpt", " models/univ", "--config", "config/univ.py"]
 sys.argv = ["main.py", "--test","data/Interation/DR_USA_Intersection_EP1", "--ckpt", " models\interaction\DR_USA_Intersection_EP1", "--config", "config/Interaction.py"]
 
-import os, sys, time
-import importlib
+
+import os
+import sys
+import time
+import csv
 import torch
 import numpy as np
-import itertools
+import pandas as pd
+from tqdm import tqdm
+from tabulate import tabulate
+from itertools import islice
 import seaborn as sns
 import matplotlib.pyplot as plt
+from matplotlib.animation import FuncAnimation
 from datetime import datetime
 from torch.utils.tensorboard import SummaryWriter
+import importlib
 
+# Your specific imports
+import DRF
+import Lanelet_Map_Viz 
 from social_vae import SocialVAE
 from data import Dataloader
 from utils import ADE_FDE, FPC, seed, get_rng_state, set_rng_state
+
 
 try:
     import lanelet2
@@ -80,7 +80,8 @@ def process_data_to_tensors(data, agent_threshold, ob_horizon, future_pre,device
     
     N=ob_horizon+future_pre+2
     tensors_list = []
-    num_items_to_process = 50
+    #num_items_to_process = len(data) #attention
+    num_items_to_process =50
     processed_count=0
 
     grouped_data = data.groupby('case_id')
@@ -511,7 +512,7 @@ if __name__ == "__main__":
     table_headers = ["Index", "File"]
     print(tabulate(table_data, headers=table_headers, tablefmt="grid"))
     
-    file_name = files[10]
+    file_name = files[6]
     data = pd.read_csv((os.path.join(Data_Path,file_name)))
     
     #print(data.head())
@@ -565,12 +566,15 @@ if __name__ == "__main__":
             y_pred = model(x, neighbor, n_predictions=config.PRED_SAMPLES)
             Pos_npred = []
             
+            #select y_pred    
+            y_pred =y_pred[list(FPC(y_pred, 3)), :, :, :]
             
             
             mode="Scenario_Pred"
             mode="Ego_Pred"
                         
             lanelet_map_file = "DR_USA_Roundabout_FT.osm"
+            lanelet_map_file = "DR_USA_Intersection_EP1.osm"
             lat_origin = settings.lat_origin  # origin is necessary to correctly project the lat lon values of the map to the local
             lon_origin = settings.lon_origin  # coordinates in which the tracks are provided; defaulting to (0|0) for every scenario
             
