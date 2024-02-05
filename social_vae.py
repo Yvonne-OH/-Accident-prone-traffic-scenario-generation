@@ -426,7 +426,7 @@ class SocialVAE(torch.nn.Module):
         if L_adv_loss>8000:
             loss= kl+avg_weighted_mse_loss+(L_adv_loss)
         else:
-            loss= kl+avg_weighted_mse_loss+torch.ln(L_adv_loss)
+            loss= kl+avg_weighted_mse_loss+L_adv_loss
 
         return {
             

@@ -1,9 +1,12 @@
 
+
 #tensorboard --logdir=C:\Users\39829\Desktop\SocialVAE\log_rebound --port 8123
 
 import sys
+#sys.argv = ["main.py", "--train","data/nba/rebound/train", "--test", "data/nba/rebound/test", "--ckpt", "log_rebound", "--config", "config/nba_rebound.py"]
 sys.argv = ["main.py", "--train","data/Interation/DR_USA_Intersection_EP1", "--test", "data/Interation/DR_USA_Intersection_EP1", "--ckpt", "log_rebound", "--config", "config/Interaction.py"]
-#sys.argv = ["main.py", "--train","data/Interation/Mixed_Senario", "--test", "data/Interation/Mixed_Senario", "--ckpt", "log_rebound", "--config", "config/Mixed_Senario.py"]
+#sys.argv = ["main.py", "--test","data/nba/rebound/test", "--ckpt", " models/nba/rebound", "--config", "config/nba_rebound.py"]
+#sys.argv = ["main.py", "--test","data/univ/test", "--ckpt", " models/univ", "--config", "config/univ.py"]
 
 import os, sys, time
 import importlib
@@ -14,6 +17,8 @@ from torch.utils.tensorboard import SummaryWriter
 from social_vae import SocialVAE
 from data import Dataloader
 from utils import ADE_FDE, FPC, seed, get_rng_state, set_rng_state
+
+
 
 import argparse
 parser = argparse.ArgumentParser()

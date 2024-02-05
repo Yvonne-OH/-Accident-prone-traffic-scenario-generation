@@ -120,8 +120,8 @@ def draw_lanelet_map(laneletmap, axes):
             polygon = Polygon(points, True)
             areas.append(polygon)
 
-    area_patches = PatchCollection(areas, facecolors="darkgray", edgecolors="None", zorder=5)
-    axes.add_collection(area_patches)
+    #area_patches = PatchCollection(areas, facecolors="darkgray", edgecolors="None", zorder=5)
+    #axes.add_collection(area_patches)
 
 #%%
 if __name__ == "__main__":

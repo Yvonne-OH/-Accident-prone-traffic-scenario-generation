@@ -102,8 +102,7 @@ if __name__ == "__main__":
     plt.title('Elliptical Field Strength')
     plt.xlabel('X-axis')
     plt.ylabel('Y-axis')
-    plt.gca().set_aspect('equal', adjustable='box')  # 保持横纵坐标比例一致
+    plt.gca().set_aspect('equal', adjustable='box')  
     plt.grid(True)
     plt.show()
-
 

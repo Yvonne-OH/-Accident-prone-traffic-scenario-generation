@@ -313,7 +313,7 @@ def plot_trajectory(fig,ax,x,y,y_pred,neighbor,mode,EN_vehicle=True,Length=4,Wid
 
 
 
-def plot_trajectory_animation(x, y, y_pred, neighbor, laneletmap,mode,output_path,name,EN_vehicle=True, Length=4, Width=1.8, Style='b-'):
+def plot_trajectory_animation(x, y, y_pred, neighbor, laneletmap,mode,output_path,name,EN_vehicle=True,Length=4, Width=1.8, Style='b-'):
     fig, ax = plt.subplots(figsize=(10.24, 7.68))
     color_list = ['#F1D77E', '#d76364','#2878B5', '#9AC9DB', '#F8AC8C', '#C82423',
                   '#FF8884', '#8ECFC9',"#F3D266","#B1CE46","#a1a9d0","#F6CAE5"] * 2
@@ -572,6 +572,7 @@ if __name__ == "__main__":
             
             mode="Scenario_Pred"
             mode="Ego_Pred"
+            Save=True
                         
             lanelet_map_file = "DR_USA_Roundabout_FT.osm"
             lanelet_map_file = "DR_USA_Intersection_EP1.osm"
@@ -589,6 +590,13 @@ if __name__ == "__main__":
             #Pos_npred,ax=plot_trajectory(fig, ax,x,y,y_pred,neighbor,mode)
             name=file_name.rpartition('_')[0]+"_"+str(datetime.now()).replace("-", "_").replace(" ", "_").replace(".", "_").replace(":", "_")+".gif"
             plot_trajectory_animation(x, y, y_pred, neighbor,laneletmap, mode,output_path,name)
+            
+            if Save:
+                np.save(output_path+"\\_Attack_His_"+name[0:-4]+".npy", x.cpu().detach().numpy())
+                np.save(output_path+"\\_Attack_Tru_"+name[0:-4]+".npy", y.cpu().detach().numpy())
+                np.save(output_path+"\\_Neighbor_"+name[0:-4]+".npy", neighbor.cpu().detach().numpy())
+                np.save(output_path+"\\_Attack_Gen_"+name[0:-4]+".npy", y_pred.cpu().detach().numpy())
+               
             #plot_trajectory(fig,ax,x,y,y_pred,neighbor,mode,EN_vehicle=True,Length=4,Width=1.8,Style='b--')
             
 
